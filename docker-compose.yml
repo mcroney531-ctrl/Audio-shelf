@@ -1,0 +1,21 @@
+services:
+  audioshelf:
+    build: .
+    image: audioshelf:latest
+    container_name: audioshelf
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Your audiobooks. Read-only: AudioShelf never writes into the library.
+      - /path/to/your/audiobooks:/library:ro
+      # Database, extracted cover art and the instance secret.
+      - audioshelf-data:/data
+    environment:
+      # Re-scan every hour; set to 0 to only scan on boot and on demand.
+      AUDIOSHELF_SCAN_INTERVAL_MIN: "60"
+      # Turn on when a reverse proxy terminates TLS in front of this container.
+      AUDIOSHELF_TRUST_PROXY: "0"
+
+volumes:
+  audioshelf-data:

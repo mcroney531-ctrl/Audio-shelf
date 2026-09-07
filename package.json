@@ -1,0 +1,21 @@
+{
+  "name": "audio-shelf",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AudioShelf \u2014 a self-hosted audiobook server with an offline-capable PWA player.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
+    "cli": "node --disable-warning=ExperimentalWarning server/cli.js",
+    "seed:demo": "node --disable-warning=ExperimentalWarning scripts/seed-demo.js",
+    "icons": "node scripts/make-icons.js",
+    "test": "node --disable-warning=ExperimentalWarning --test 'tests/**/*.test.js'"
+  },
+  "dependencies": {
+    "music-metadata": "^11.15.0"
+  }
+}
