@@ -122,6 +122,11 @@ export async function serveStatic(req, res, urlPath) {
   const immutable = /\.(woff2|png|svg|ico)$/i.test(target);
   await sendFile(req, res, target, {
     cacheControl: immutable ? 'public, max-age=604800' : 'no-cache',
+    // The manifest is named .json for maximum Android compatibility, but it
+    // still has to go out with the manifest media type.
+    contentType: path.basename(target) === 'manifest.json'
+      ? 'application/manifest+json; charset=utf-8'
+      : undefined,
   });
 }
 

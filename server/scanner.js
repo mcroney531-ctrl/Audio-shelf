@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { parseFile } from 'music-metadata';
 import { db } from './db.js';
 import { config } from './config.js';
+import { AUDIBLE_EXT, noteImport, pruneImports } from './audible.js';
 
 const AUDIO_EXT = new Map([
   ['.mp3', 'audio/mpeg'],
@@ -37,6 +38,7 @@ export const scanState = {
   removed: 0,
   current: null,
   error: null,
+  audible: 0,
 };
 
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
@@ -51,8 +53,8 @@ const clean = (value) => {
   return text ? text : null;
 };
 
-/** Recursively collect audio files, one entry per directory. */
-async function walk(dir, out = new Map(), seen = new Set()) {
+/** Recursively collect audio files (one entry per directory) and Audible files. */
+async function walk(dir, out = { audio: new Map(), audible: [] }, seen = new Set()) {
   let real;
   try {
     real = await fs.realpath(dir);
@@ -77,10 +79,14 @@ async function walk(dir, out = new Map(), seen = new Set()) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) dirs.push(full);
     else if (entry.isFile() || entry.isSymbolicLink()) {
-      if (AUDIO_EXT.has(path.extname(entry.name).toLowerCase())) files.push(full);
+      const extension = path.extname(entry.name).toLowerCase();
+      if (AUDIO_EXT.has(extension)) files.push(full);
+      // Audible downloads are still encrypted, so they are import candidates
+      // rather than books - see server/audible.js.
+      else if (AUDIBLE_EXT.has(extension)) out.audible.push(full);
     }
   }
-  if (files.length) out.set(dir, files.sort(collator.compare));
+  if (files.length) out.audio.set(dir, files.sort(collator.compare));
   for (const child of dirs) await walk(child, out, seen);
   return out;
 }
@@ -90,13 +96,13 @@ async function walk(dir, out = new Map(), seen = new Set()) {
  * sub-folders that are themselves books, its loose files each become a
  * single-file book — that is the common "library root full of .m4b" layout.
  */
-function groupIntoBooks(dirMap, libraryDir) {
+function groupIntoBooks(dirMap, rootDir) {
   const dirs = [...dirMap.keys()];
   const hasBookChild = (dir) => dirs.some((d) => d !== dir && d.startsWith(dir + path.sep));
   const books = [];
 
   for (const [dir, files] of dirMap) {
-    if (dir === libraryDir || hasBookChild(dir)) {
+    if (dir === rootDir || hasBookChild(dir)) {
       for (const file of files) books.push({ folder: dir, files: [file], single: true });
     } else {
       books.push({ folder: dir, files, single: files.length === 1 });
@@ -325,16 +331,35 @@ export async function scanLibrary({ force = false } = {}) {
   }
 
   try {
-    const dirMap = await walk(config.libraryDir);
-    const books = groupIntoBooks(dirMap, config.libraryDir);
+    // The library folder plus the imports folder, so converted Audible books
+    // appear on the shelf without the library itself needing to be writable.
+    const seen = new Set();
+    const walked = { audio: new Map(), audible: [] };
+    const books = [];
+    for (const root of config.libraryRoots) {
+      const before = new Set(walked.audio.keys());
+      await walk(root, walked, seen);
+      const fresh = new Map([...walked.audio].filter(([dir]) => !before.has(dir)));
+      books.push(...groupIntoBooks(fresh, root));
+    }
     scanState.found = books.length;
+
+    for (const file of walked.audible) {
+      try {
+        await noteImport(file, await fs.stat(file));
+        scanState.audible++;
+      } catch (err) {
+        console.warn(`[scan] could not read ${path.basename(file)}: ${err.message}`);
+      }
+    }
+    pruneImports();
     const now = Date.now();
     const seenKeys = new Set();
 
     for (const book of books) {
       const key = bookKey(book);
       seenKeys.add(key);
-      scanState.current = path.relative(config.libraryDir, book.single ? book.files[0] : book.folder);
+      scanState.current = path.basename(book.single ? book.files[0] : book.folder);
       const existing = db.prepare('SELECT id, added_at, fingerprint FROM books WHERE key = ?').get(key);
       const fp = await fingerprint(book.files);
       if (existing && existing.fingerprint === fp.hash && !force) {

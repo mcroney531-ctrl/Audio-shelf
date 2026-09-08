@@ -3,7 +3,8 @@ import { api } from './api.js';
 import { Player, lastBookId } from './player.js';
 import { createPlayerUI } from './playerui.js';
 import { registerServiceWorker } from './offline.js';
-import { homeView, libraryView, bookView, downloadsView, settingsView } from './views.js';
+import { canPrompt, promptInstall, isStandalone } from './install.js';
+import { homeView, libraryView, bookView, downloadsView, settingsView, importsView } from './views.js';
 
 const THEME_KEY = 'audioshelf.theme';
 const app = document.getElementById('app');
@@ -23,6 +24,7 @@ const NAV = [
   ['#/library', 'shelf', 'Library'],
   ['#/listening', 'headphones', 'Listening'],
   ['#/downloads', 'download', 'Downloads'],
+  ['#/imports', 'key', 'Imports', { admin: true }],
   ['#/settings', 'settings', 'Settings'],
 ];
 
@@ -32,6 +34,7 @@ const ROUTES = [
   [/^\/listening$/, (ctx) => libraryView({ ...ctx, query: new URLSearchParams('filter=in-progress&sort=recent') })],
   [/^\/book\/(?<id>\d+)$/, bookView],
   [/^\/downloads$/, downloadsView],
+  [/^\/imports$/, importsView],
   [/^\/settings$/, settingsView],
 ];
 
@@ -94,10 +97,24 @@ function buildShell(ctx) {
   const navLink = (href, iconName, label, className) => h(`a.${className}`, { href },
     icon(iconName), h('span', label));
 
+  const installLink = h('button.navlink', {
+    hidden: !canPrompt(),
+    onclick: async () => {
+      const outcome = await promptInstall();
+      if (outcome === 'unavailable') location.hash = '#/settings';
+      else toast(outcome === 'accepted' ? 'Installing AudioShelf…' : 'Install dismissed');
+    },
+  }, icon('download'), h('span', 'Install app'));
+  document.addEventListener('audioshelf:installable', () => { installLink.hidden = false; });
+  document.addEventListener('audioshelf:installed', () => { installLink.hidden = true; });
+
+  const visible = NAV.filter(([, , , options]) => !options?.admin || ctx.user.isAdmin);
+
   const rail = h('nav.rail',
     h('div.rail__brand', h('img', { src: '/icons/icon-192.png', alt: '' }), 'AudioShelf'),
-    ...NAV.map(([href, iconName, label]) => navLink(href, iconName, label, 'navlink')),
+    ...visible.map(([href, iconName, label]) => navLink(href, iconName, label, 'navlink')),
     h('div.rail__foot',
+      installLink,
       h('button.navlink', {
         onclick: () => setTheme(theme() === 'night' ? 'daylight' : 'night'),
       }, icon(theme() === 'night' ? 'sun' : 'moon'), h('span', 'Flip the lights')),
@@ -108,8 +125,10 @@ function buildShell(ctx) {
           h('div.tag', ctx.user.isAdmin ? 'Administrator' : 'Listener')),
         h('button.iconbtn', { title: 'Sign out', onclick: ctx.signOut }, icon('logout', 17)))));
 
-  const tabbar = h('nav.tabbar', ...NAV.filter((_, i) => i !== 2).map(([href, iconName, label]) =>
-    h('a', { href }, icon(iconName), h('span', label))));
+  // The phone bar keeps the four places you actually tap.
+  const tabbar = h('nav.tabbar', ...visible
+    .filter(([href]) => href !== '#/listening' && href !== '#/imports')
+    .map(([href, iconName, label]) => h('a', { href }, icon(iconName), h('span', label))));
 
   const main = h('main.main');
   mount(app, rail, main, tabbar);

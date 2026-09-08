@@ -1,6 +1,7 @@
 import { h, icon, mount, clear, humanDuration, clockTime, relativeTime, toast } from './dom.js';
 import { api, coverUrl } from './api.js';
 import { downloadBook, removeDownload, isDownloaded, downloadIndex, storageUsage, formatBytes, clearAllDownloads, requestPersistence } from './offline.js';
+import { runInstallChecks, promptInstall, canPrompt, isStandalone, installReport } from './install.js';
 
 /** Deterministic colour so every book without art still looks like a specific book. */
 function seedColor(text) {
@@ -392,6 +393,8 @@ export async function settingsView(ctx) {
       h('div', h('div.settingrow__label', 'Default speed'), h('div.settingrow__hint', 'Applies to books you have not set a speed for.')),
       speedRow)));
 
+  node.append(installSection());
+
   // --- account
   const passwordError = h('p.formerror');
   const passwordForm = h('form.form', {
@@ -423,6 +426,61 @@ export async function settingsView(ctx) {
 
   if (ctx.user.isAdmin) node.append(await adminSection(ctx));
   return node;
+}
+
+/**
+ * Shows whether this browser will install AudioShelf as a real app, and names
+ * the failing criterion when it will not — an Android "Add to Home screen"
+ * shortcut looks installed but is only a bookmark.
+ */
+function installSection() {
+  const wrap = h('section.section');
+  const list = h('div.list');
+  const installBtn = h('button.btn.btn--primary', {
+    hidden: !canPrompt(),
+    onclick: async () => {
+      const outcome = await promptInstall();
+      toast(outcome === 'accepted' ? 'Installing…' : outcome === 'dismissed' ? 'Install dismissed' : 'No install prompt available');
+      refresh();
+    },
+  }, icon('download'), 'Install app');
+
+  const copyBtn = h('button.btn.btn--ghost', {
+    onclick: async () => {
+      try {
+        await navigator.clipboard.writeText(installReport(await runInstallChecks()));
+        toast('Report copied');
+      } catch {
+        toast('Clipboard blocked by the browser', 'bad');
+      }
+    },
+  }, 'Copy report');
+
+  async function refresh() {
+    installBtn.hidden = !canPrompt();
+    const checks = await runInstallChecks();
+    mount(list, ...checks.map((check) => h('div.settingrow',
+      h('div',
+        h('div.settingrow__label',
+          h('span', { style: { color: check.ok ? 'var(--sage)' : 'var(--rust)', marginRight: '8px' } }, check.ok ? '✓' : '✕'),
+          check.label),
+        h('div.settingrow__hint', check.detail),
+        check.fix ? h('div.settingrow__hint', { style: { marginTop: '4px', color: 'var(--amber)' } }, check.fix) : null))));
+  }
+
+  document.addEventListener('audioshelf:installable', refresh);
+  document.addEventListener('audioshelf:installed', refresh);
+
+  wrap.append(
+    sectionHead('Install on this device'),
+    h('p.tag', { style: { marginBottom: '14px' } }, isStandalone()
+      ? 'Running as an installed app.'
+      : 'These are the checks Chrome runs before it will install a real app rather than a home-screen bookmark.'),
+    h('div.chips', { style: { marginBottom: '10px' } }, installBtn, copyBtn,
+      h('button.btn.btn--ghost', { onclick: refresh }, icon('refresh'), 'Re-check')),
+    list);
+  refresh();
+  return wrap;
 }
 
 async function adminSection(ctx) {
@@ -531,4 +589,168 @@ async function adminSection(ctx) {
   wrap.append(sectionHead('Server'), status);
   await render();
   return wrap;
+}
+
+// ---------------------------------------------------------------------------
+// Audible imports (admin)
+// ---------------------------------------------------------------------------
+const STATUS_LABEL = {
+  pending: 'Ready to convert',
+  converting: 'Converting',
+  done: 'Imported',
+  failed: 'Failed',
+};
+
+export async function importsView(ctx) {
+  if (!ctx.user.isAdmin) {
+    return h('div.empty', h('h2', 'Administrators only'),
+      h('p', 'Importing Audible files changes the shelf for everyone, so it is an admin job.'));
+  }
+
+  const node = h('div');
+  const toolsBox = h('div');
+  const keyBox = h('div');
+  const list = h('div.list');
+  let pollTimer = null;
+
+  node.append(h('header.topbar',
+    h('div',
+      h('p.eyebrow', 'Your Audible downloads'),
+      h('h1', 'Imports')),
+    h('button.btn', {
+      onclick: async () => { await api.scan(); toast('Looking for new files…'); setTimeout(render, 2500); },
+    }, icon('refresh'), 'Rescan')));
+
+  node.append(toolsBox, keyBox, list);
+
+  async function render() {
+    const data = await api.imports();
+
+    // --- ffmpeg
+    mount(toolsBox, data.tools.ffmpeg
+      ? h('section.section', sectionHead('Converter'), h('div.settingrow',
+        h('div',
+          h('div.settingrow__label', `ffmpeg ${data.tools.version}`),
+          h('div.settingrow__hint',
+            `AAX ${data.tools.supportsAax ? 'supported' : 'not supported by this build'} · `,
+            `AAXC ${data.tools.supportsAaxc ? 'supported' : 'not supported by this build'}`)),
+        h('span.tag', { style: { color: 'var(--sage)' } }, 'Ready')))
+      : h('div.empty',
+        h('h2', 'ffmpeg is not installed'),
+        h('p', 'Converting Audible files needs ffmpeg on the server. Install it with your package manager (', h('code', 'apt install ffmpeg'), ', ', h('code', 'brew install ffmpeg'), ') — the official Docker image already includes it.'),
+        h('p.tag', `Looked for: ${data.tools.path}`)));
+
+    // --- activation bytes
+    const bytesInput = h('input', {
+      name: 'activationBytes',
+      placeholder: data.hasActivationBytes ? data.activationBytes : '1a2b3c4d',
+      maxlength: 10,
+      autocomplete: 'off',
+      spellcheck: 'false',
+      style: { fontFamily: 'ui-monospace, monospace', maxWidth: '220px' },
+    });
+    const keyError = h('p.formerror');
+
+    mount(keyBox, h('section.section',
+      sectionHead('Account activation bytes'),
+      h('p.detail__blurb', { style: { marginBottom: '14px' } },
+        'Legacy ', h('code', '.aax'), ' files are locked to your Audible account with eight hex characters. ',
+        'Fetch yours from your own account (', h('code', 'audible activation-bytes'), ' from the audible-cli project does it with your login), paste them once, and every .aax converts without asking again. ',
+        h('code', '.aaxc'), ' files do not need this — they carry a ', h('code', '.voucher'), ' file instead.'),
+      h('form.form', {
+        style: { display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' },
+        onsubmit: async (event) => {
+          event.preventDefault();
+          keyError.textContent = '';
+          try {
+            await api.setActivationBytes(bytesInput.value);
+            toast('Activation bytes saved');
+            render();
+          } catch (err) {
+            keyError.textContent = err.message;
+          }
+        },
+      },
+        h('label', { style: { flex: '0 0 auto' } }, 'Activation bytes', bytesInput),
+        h('button.btn', { type: 'submit' }, 'Save'),
+        data.hasActivationBytes ? h('button.btn.btn--ghost', {
+          type: 'button',
+          onclick: async () => { await api.clearActivationBytes(); toast('Cleared'); render(); },
+        }, 'Clear') : null),
+      keyError));
+
+    // --- the files
+    if (!data.imports.length) {
+      mount(list, h('div.empty',
+        h('h2', 'No Audible files found'),
+        h('p', 'Copy your ', h('code', '.aax'), ' or ', h('code', '.aaxc'), ' downloads anywhere inside your library folder and hit Rescan. Keep each ', h('code', '.voucher'), ' file next to its ', h('code', '.aaxc'), '.'),
+        h('p.tag', `Converted books are written to ${data.outputDir}`)));
+    } else {
+      mount(list, ...data.imports.map((entry) => importRow(entry, data, render)));
+    }
+
+    clearInterval(pollTimer);
+    if (data.state.running) {
+      pollTimer = setInterval(render, 1200);
+      ctx.onLeave(() => clearInterval(pollTimer));
+    }
+  }
+
+  function importRow(entry, data, refresh) {
+    const busy = entry.status === 'converting';
+    const ready = entry.format === 'aax' ? data.hasActivationBytes : entry.hasVoucher;
+
+    const convert = h('button.btn', {
+      disabled: busy || data.state.running || !data.tools.ffmpeg,
+      onclick: async () => {
+        try {
+          await api.convertImport(entry.id);
+          toast(`Converting ${entry.title || entry.file}…`);
+          refresh();
+        } catch (err) {
+          toast(err.message, 'bad');
+        }
+      },
+    }, icon('key', 16), entry.status === 'done' ? 'Convert again' : 'Convert');
+
+    const checksumBtn = entry.format === 'aax' && !entry.checksum ? h('button.btn.btn--ghost', {
+      title: 'Show the checksum an activation-byte lookup needs',
+      onclick: async (event) => {
+        const { checksum } = await api.importChecksum(entry.id);
+        event.target.replaceWith(h('span.tag', checksum ? `checksum ${checksum}` : 'no checksum'));
+      },
+    }, 'Checksum') : entry.checksum ? h('span.tag', `checksum ${entry.checksum}`) : null;
+
+    return h('div', { style: { padding: '14px 0', borderBottom: '1px solid var(--line)' } },
+      h('div', { style: { display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' } },
+        h('div', { style: { flex: '1 1 260px', minWidth: 0 } },
+          h('div.settingrow__label', entry.title || entry.file),
+          h('div.settingrow__hint',
+            `${entry.format.toUpperCase()} · ${formatBytes(entry.size)}`,
+            entry.author ? ` · ${entry.author}` : '',
+            entry.duration ? ` · ${humanDuration(entry.duration)}` : '')),
+        h('span.tag', {
+          style: {
+            color: entry.status === 'done' ? 'var(--sage)'
+              : entry.status === 'failed' ? 'var(--rust)'
+                : ready ? 'var(--amber)' : 'var(--paper-dim)',
+          },
+        }, STATUS_LABEL[entry.status] || entry.status),
+        checksumBtn,
+        entry.status === 'done' ? null : convert),
+
+      busy ? h('div.progressline', { style: { marginTop: '10px' } },
+        h('i', { style: { width: `${Math.round((entry.progress || 0) * 100)}%` } })) : null,
+
+      !ready && entry.status !== 'done' ? h('p.settingrow__hint', { style: { marginTop: '8px', color: 'var(--amber)' } },
+        entry.format === 'aax'
+          ? 'Save your activation bytes above, or this file cannot be decrypted.'
+          : `No ${entry.file.replace(/\.aaxc$/i, '.voucher')} next to this file — copy it across from your download folder.`) : null,
+
+      entry.error ? h('p.formerror', { style: { marginTop: '8px' } }, entry.error) : null,
+      entry.output ? h('p.settingrow__hint', { style: { marginTop: '8px' } }, `→ ${entry.output}`) : null);
+  }
+
+  await render();
+  return node;
 }

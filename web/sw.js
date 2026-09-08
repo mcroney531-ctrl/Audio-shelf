@@ -11,10 +11,11 @@ const SHELL_ASSETS = [
   '/',
   '/index.html',
   '/styles.css',
-  '/manifest.webmanifest',
+  '/manifest.json',
   '/js/app.js',
   '/js/api.js',
   '/js/dom.js',
+  '/js/install.js',
   '/js/offline.js',
   '/js/player.js',
   '/js/playerui.js',
@@ -25,6 +26,8 @@ const SHELL_ASSETS = [
   '/fonts/karla-latin-ext.woff2',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/icons/icon-maskable-192.png',
+  '/icons/icon-maskable-512.png',
   '/icons/favicon-32.png',
 ];
 

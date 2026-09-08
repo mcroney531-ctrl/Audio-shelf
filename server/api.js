@@ -2,6 +2,10 @@ import { db } from './db.js';
 import { config } from './config.js';
 import { scanLibrary, scanState } from './scanner.js';
 import {
+  checkTools, listImports, runImport, importState, ensureChecksum,
+  normalizeActivationBytes, setSetting, storedActivationBytes, ACTIVATION_KEY, readVoucher,
+} from './audible.js';
+import {
   createRouter, send, readJson, HttpError, badRequest, notFound, forbidden,
 } from './http.js';
 import {
@@ -262,6 +266,72 @@ const routes = [
     const body = await readJson(ctx.req).catch(() => ({}));
     if (!scanState.running) scanLibrary({ force: !!body.force });
     send(ctx.res, 202, { scan: scanState });
+  }],
+
+  // --- Audible (.aax/.aaxc) imports -------------------------------------
+  ['GET', '/api/admin/imports', async (ctx) => {
+    requireAdmin(ctx);
+    const stored = storedActivationBytes();
+    send(ctx.res, 200, {
+      tools: await checkTools(),
+      // Never echo the key back in full; enough to confirm which one is saved.
+      activationBytes: stored ? `${stored.slice(0, 2)}${'*'.repeat(4)}${stored.slice(-2)}` : null,
+      hasActivationBytes: !!stored,
+      imports: listImports(),
+      state: importState,
+      outputDir: config.importsDir,
+    });
+  }],
+
+  ['POST', '/api/admin/activation', async (ctx) => {
+    requireAdmin(ctx);
+    const body = await readJson(ctx.req);
+    if (body.clear) {
+      db.prepare('DELETE FROM settings WHERE key = ?').run(ACTIVATION_KEY);
+      return send(ctx.res, 200, { ok: true, hasActivationBytes: false });
+    }
+    setSetting(ACTIVATION_KEY, normalizeActivationBytes(body.activationBytes));
+    send(ctx.res, 200, { ok: true, hasActivationBytes: true });
+  }],
+
+  ['POST', '/api/admin/imports/:id/convert', async (ctx) => {
+    requireAdmin(ctx);
+    const body = await readJson(ctx.req).catch(() => ({}));
+    const keys = {};
+    if (body.activationBytes) keys.activationBytes = normalizeActivationBytes(body.activationBytes);
+    if (body.key && body.iv) { keys.key = String(body.key).trim(); keys.iv = String(body.iv).trim(); }
+    if (importState.running) throw new HttpError(409, 'Another import is already running');
+    const id = num(ctx.params.id, -1);
+    if (!db.prepare('SELECT 1 FROM imports WHERE id = ?').get(id)) throw notFound('No such import');
+
+    // Convert in the background; the row and importState carry progress and errors.
+    runImport(id, keys)
+      .then(() => scanLibrary())
+      .catch((err) => console.warn(`[import] ${err.message}`));
+    send(ctx.res, 202, { started: true, state: importState });
+  }],
+
+  ['GET', '/api/admin/imports/:id/checksum', async (ctx) => {
+    requireAdmin(ctx);
+    send(ctx.res, 200, { checksum: await ensureChecksum(num(ctx.params.id, -1)) });
+  }],
+
+  ['GET', '/api/admin/imports/:id/voucher', async (ctx) => {
+    requireAdmin(ctx);
+    const row = db.prepare('SELECT path, format FROM imports WHERE id = ?').get(num(ctx.params.id, -1));
+    if (!row) throw notFound('No such import');
+    if (row.format !== 'aaxc') return send(ctx.res, 200, { voucher: null });
+    const voucher = await readVoucher(row.path);
+    send(ctx.res, 200, {
+      voucher: voucher ? { path: voucher.path, error: voucher.error || null, usable: !voucher.error } : null,
+    });
+  }],
+
+  ['DELETE', '/api/admin/imports/:id', (ctx) => {
+    requireAdmin(ctx);
+    const info = db.prepare('DELETE FROM imports WHERE id = ?').run(num(ctx.params.id, -1));
+    if (!info.changes) throw notFound('No such import');
+    send(ctx.res, 200, { ok: true });
   }],
 
   ['POST', '/api/admin/users', async (ctx) => {

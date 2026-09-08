@@ -99,6 +99,35 @@ const MIGRATIONS = [
   );
   CREATE INDEX bookmarks_book ON bookmarks(user_id, book_id, position);
   `,
+
+  // 2 — Audible (.aax/.aaxc) imports and server-wide settings
+  `
+  CREATE TABLE settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE imports (
+    id            INTEGER PRIMARY KEY,
+    path          TEXT NOT NULL UNIQUE,
+    format        TEXT NOT NULL,                    -- aax | aaxc
+    size          INTEGER NOT NULL DEFAULT 0,
+    mtime         INTEGER NOT NULL DEFAULT 0,
+    checksum      TEXT,                             -- aax file checksum, for activation lookup
+    title         TEXT,
+    author        TEXT,
+    duration      REAL NOT NULL DEFAULT 0,
+    has_voucher   INTEGER NOT NULL DEFAULT 0,
+    status        TEXT NOT NULL DEFAULT 'pending',  -- pending | converting | done | failed
+    progress      REAL NOT NULL DEFAULT 0,
+    error         TEXT,
+    output        TEXT,
+    discovered_at INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL
+  );
+  CREATE INDEX imports_status ON imports(status, discovered_at DESC);
+  `,
 ];
 
 const version = () => db.prepare('PRAGMA user_version').get().user_version;

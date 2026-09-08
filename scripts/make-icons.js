@@ -46,10 +46,18 @@ function draw(size, { padding = 0.12 } = {}) {
   return canvas;
 }
 
+/**
+ * Android WebAPK installs need SEPARATE `any` and `maskable` entries in the
+ * manifest, each backed by its own asset: a combined "any maskable" purpose
+ * trips a Chrome icon-resolution bug and quietly falls back to a bookmark
+ * shortcut. Maskable art is drawn into the inner ~80% safe zone so Android's
+ * adaptive-icon mask cannot crop the mark.
+ */
 const targets = [
   ['icon-192.png', 192, 0.14],
   ['icon-512.png', 512, 0.14],
-  ['icon-maskable-512.png', 512, 0.22],
+  ['icon-maskable-192.png', 192, 0.26],
+  ['icon-maskable-512.png', 512, 0.26],
   ['apple-touch-icon.png', 180, 0.16],
   ['favicon-32.png', 32, 0.10],
 ];

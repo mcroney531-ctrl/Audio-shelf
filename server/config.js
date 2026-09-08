@@ -37,6 +37,11 @@ export const config = {
   coversDir: path.join(dataDir, 'covers'),
   dbFile: path.join(dataDir, 'audioshelf.db'),
   libraryDir: path.resolve(root, env.AUDIOSHELF_LIBRARY || 'library'),
+  // Converted Audible imports land here; the scanner treats it as a second
+  // library root so the library folder itself can stay read-only.
+  importsDir: path.resolve(root, env.AUDIOSHELF_IMPORTS || path.join(dataDir, 'imported')),
+  ffmpeg: env.AUDIOSHELF_FFMPEG || 'ffmpeg',
+  ffprobe: env.AUDIOSHELF_FFPROBE || 'ffprobe',
   host: env.AUDIOSHELF_HOST || '0.0.0.0',
   port: num(env.AUDIOSHELF_PORT, 8080),
   scanOnStart: bool(env.AUDIOSHELF_SCAN_ON_START, true),
@@ -46,4 +51,7 @@ export const config = {
   secret: loadSecret(),
 };
 
+config.libraryRoots = [config.libraryDir, config.importsDir];
+
 mkdirSync(config.coversDir, { recursive: true });
+mkdirSync(config.importsDir, { recursive: true });

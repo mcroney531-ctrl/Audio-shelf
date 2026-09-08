@@ -52,6 +52,13 @@ export const api = {
   deleteBookmark: (id) => request(`/api/bookmarks/${id}`, { method: 'DELETE' }),
 
   adminStatus: () => request('/api/admin/status'),
+  imports: () => request('/api/admin/imports'),
+  convertImport: (id, keys = {}) => request(`/api/admin/imports/${id}/convert`, { method: 'POST', body: keys }),
+  importChecksum: (id) => request(`/api/admin/imports/${id}/checksum`),
+  forgetImport: (id) => request(`/api/admin/imports/${id}`, { method: 'DELETE' }),
+  setActivationBytes: (activationBytes) =>
+    request('/api/admin/activation', { method: 'POST', body: { activationBytes } }),
+  clearActivationBytes: () => request('/api/admin/activation', { method: 'POST', body: { clear: true } }),
   scan: (force = false) => request('/api/admin/scan', { method: 'POST', body: { force } }),
   addUser: (payload) => request('/api/admin/users', { method: 'POST', body: payload }),
   deleteUser: (id) => request(`/api/admin/users/${id}`, { method: 'DELETE' }),

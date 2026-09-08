@@ -7,6 +7,9 @@ ENV NODE_ENV=production \
     AUDIOSHELF_HOST=0.0.0.0 \
     AUDIOSHELF_PORT=8080
 
+# ffmpeg powers the Audible (.aax/.aaxc) import; everything else is pure Node.
+RUN apk add --no-cache ffmpeg
+
 WORKDIR /app
 
 COPY package.json package-lock.json* ./

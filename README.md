@@ -35,6 +35,13 @@ a player that remembers your position across every device you sign in on.
   including byte-range requests, so seeking works with the network off
 - Listening position is queued while offline and synced when you reconnect
 
+**Audible imports**
+- Finds the `.aax` / `.aaxc` files you downloaded from your own account anywhere in the library
+- Converts them to plain `.m4b` with ffmpeg: audio stream copied, never re-encoded, chapters and cover art intact
+- One-click from the Imports page, or `npm run cli -- import --all`
+- You supply the keys — your account activation bytes for `.aax`, the `.voucher` Audible's downloader
+  writes next to each `.aaxc`. AudioShelf never contacts Audible and cannot derive keys for you.
+
 **Multi-user**
 - First account created is the administrator; admins add listeners and trigger scans
 - Each listener gets their own progress, bookmarks and finished shelf
@@ -101,6 +108,85 @@ Tags win over filenames. AudioShelf reads:
 
 Multi-file books are ordered by disc/track number, then by natural filename order.
 
+## Importing your Audible downloads
+
+Audible files are encrypted, so nothing can play them until they are converted. AudioShelf
+does that with **ffmpeg** (install it with your package manager; the Docker image includes it)
+and with keys that you provide — it has no way to obtain them for you.
+
+| Format | What it needs | Where that comes from |
+| --- | --- | --- |
+| `.aax` (legacy) | Your account's **activation bytes**, 8 hex characters | Your own account, e.g. `audible activation-bytes` from the [audible-cli](https://github.com/mkb79/audible-cli) project, which signs in as you |
+| `.aaxc` (current) | The **key** and **iv** from the file's `.voucher` | Written next to the `.aaxc` by Audible's own downloader — just copy it across with the audio |
+
+Then:
+
+1. Copy the files anywhere inside your library folder (keep each `.voucher` beside its `.aaxc`).
+2. Open **Imports** (admins only), paste your activation bytes once — they are stored server-side
+   and only ever shown back masked.
+3. Hit **Convert**. Progress is live; the finished `.m4b` lands in the imports folder
+   (`<data>/imported` by default) and appears on the shelf as soon as the follow-up scan finishes.
+
+The activation-byte lookup tools want the file checksum ffmpeg prints — the **Checksum** button on
+each `.aax` row shows it without you having to run ffmpeg by hand.
+
+![Imports](docs/screenshot-imports.png)
+
+From the command line:
+
+```bash
+npm run cli -- import:activation --set=1a2b3c4d   # store activation bytes
+npm run cli -- import:list                        # what was found, and what each file still needs
+npm run cli -- import --all                       # convert everything pending
+npm run cli -- import --file=book.aax --activation-bytes=1a2b3c4d
+npm run cli -- import --file=book.aaxc --voucher=book.voucher
+npm run cli -- import:checksum --id=3             # checksum for an activation-byte lookup
+```
+
+The original files are left untouched, so nothing is lost if a conversion goes wrong. Once a book
+is imported you can delete the `.aax` to reclaim the space.
+
+> Format-shifting works on books you bought. It does not strip anything from books you did not:
+> without your own account key, an `.aax` stays a locked file on disk.
+
+## Installing as a real app
+
+On Android there are two very different outcomes that look the same at first: a **WebAPK**
+(a real app with its own icon, app-drawer entry and OS identity) and a **bookmark shortcut**
+(a Chrome-badged icon that is really just a link). You get the shortcut when the site misses
+one of Chrome's installability criteria.
+
+AudioShelf checks all of them itself: **Settings → Install on this device** lists every
+criterion with a pass/fail and the exact fix, and shows an **Install app** button the moment
+Chrome offers one. Check that page before assuming the install worked.
+
+![Install checks](docs/screenshot-install-checks.png)
+
+What matters, and what this repo already does:
+
+- HTTPS (or `localhost`). Plain HTTP over a LAN address will never install — put it behind a
+  reverse proxy with a certificate.
+- A linked `manifest.json` with `name`, `short_name`, `start_url` and `display: standalone`.
+- **Separate** `any` and `maskable` icon entries at 192 and 512 — never one entry with
+  `"purpose": "any maskable"`, which can trip Chrome's WebAPK icon resolution and silently
+  downgrade the install to a shortcut. The maskable art is a distinct asset with the mark inside
+  the inner 80% safe zone (regenerate both with `npm run icons`).
+- A registered, controlling service worker.
+
+Verify on the device: Chrome's ⋮ menu should say **"Install app"**, not "Add to Home screen".
+For the authoritative answer, connect the phone over USB and open `chrome://inspect` from desktop
+Chrome → Application → Manifest, which lists installability errors directly.
+
+**If a badged shortcut is already on the home screen**, fixing the manifest does not repair it —
+Chrome caches the verdict per origin:
+
+1. Delete the icon from the home screen.
+2. Chrome → ⋮ → Settings → Site settings → find the site → **Delete data / Reset permissions**.
+3. Revisit, browse for a few seconds, then check the ⋮ menu for "Install app" before reinstalling.
+
+On iOS, Safari never fires an install prompt: Share → Add to Home Screen is the install, and it
+still needs HTTPS for the service worker and offline downloads to work.
+
 ## Configuration
 
 Every setting is an environment variable (see `.env.example`):
@@ -115,6 +201,8 @@ Every setting is an environment variable (see `.env.example`):
 | `AUDIOSHELF_SESSION_DAYS` | `30` | Session lifetime |
 | `AUDIOSHELF_TRUST_PROXY` | `0` | Read `X-Forwarded-Proto` for the Secure cookie flag |
 | `AUDIOSHELF_SECRET` | generated | Session signing key; kept in `data/secret` if unset |
+| `AUDIOSHELF_IMPORTS` | `<data>/imported` | Where converted Audible books are written (scanned as a second library root) |
+| `AUDIOSHELF_FFMPEG` / `AUDIOSHELF_FFPROBE` | `ffmpeg` / `ffprobe` | Only needed for imports, if they are not on `PATH` |
 
 ## Command line
 
@@ -124,6 +212,9 @@ npm run cli -- user:add --username=sam --password=... [--admin]
 npm run cli -- user:password --username=sam --password=...
 npm run cli -- user:list
 npm run cli -- stats
+npm run cli -- import:list                                     # Audible files found and what they need
+npm run cli -- import --all                                    # convert every pending .aax/.aaxc
+npm run cli -- import:activation --set=1a2b3c4d
 npm test                                                       # integration tests
 npm run icons                                                  # regenerate PWA icons
 ```
@@ -152,12 +243,14 @@ No frontend framework, no bundler, one runtime dependency.
 ```
 server/     node:http + node:sqlite. config, db, auth, scanner, api, static/range file serving
 web/        the PWA: ES modules, hand-rolled hyperscript, service worker, self-hosted fonts
+server/audible.js  the ffmpeg wrapper behind .aax/.aaxc imports
 scripts/    icon generator, demo library seeder (both dependency-free)
 tests/      integration tests against a real server on a temp library
 ```
 
 - `music-metadata` is the only dependency — it parses the tags.
-- Audio is served as-is: no transcoding, no ffmpeg. Whatever your browser plays, plays.
+- Audio is served as-is: no transcoding. Whatever your browser plays, plays. ffmpeg is used only
+  to convert Audible downloads, and only when you ask it to.
 - The database is a single SQLite file in `AUDIOSHELF_DATA`; back that up and you have
   everything except the audio.
 
@@ -165,7 +258,8 @@ tests/      integration tests against a real server on a temp library
 
 - **No transcoding.** A file your browser cannot decode will not play. Convert it once
   with ffmpeg instead of paying for it on every stream.
-- **No Audible/AAX import.** AudioShelf plays files you already own in an open format.
+- **No key recovery for Audible files.** Imports decrypt with keys you provide from your own
+  account; AudioShelf never talks to Audible and cannot crack or look up a key.
 - **One library root.** Symlink extra folders into it if you keep books on several disks.
 - **No metadata providers.** Titles come from your tags; fix them with a tagger and re-scan.
 

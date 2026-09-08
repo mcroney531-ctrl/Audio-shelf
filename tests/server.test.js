@@ -241,7 +241,7 @@ describe('administration', () => {
 
 describe('static app shell', () => {
   test('serves the PWA entry points', async () => {
-    for (const path of ['/', '/manifest.webmanifest', '/sw.js', '/styles.css', '/js/app.js']) {
+    for (const path of ['/', '/manifest.json', '/sw.js', '/styles.css', '/js/app.js']) {
       const response = await server.call(path);
       assert.equal(response.status, 200, `${path} should be served`);
       await response.text();
@@ -252,6 +252,41 @@ describe('static app shell', () => {
     const response = await server.call('/book/12');
     assert.equal(response.status, 200);
     assert.match(await response.text(), /<title>AudioShelf<\/title>/);
+  });
+
+  test('the manifest meets Android WebAPK install criteria', async () => {
+    const response = await server.call('/manifest.json');
+    assert.match(response.headers.get('content-type'), /application\/manifest\+json/);
+    const manifest = await response.json();
+
+    for (const field of ['name', 'short_name', 'start_url', 'icons']) {
+      assert.ok(manifest[field], `manifest.${field} is required for installability`);
+    }
+    assert.ok(['standalone', 'fullscreen', 'minimal-ui'].includes(manifest.display));
+
+    const purposes = (entry) => String(entry.purpose || 'any').trim().split(/\s+/);
+    // A combined "any maskable" purpose trips a Chrome WebAPK bug: Android then
+    // drops a bookmark shortcut instead of installing an app.
+    assert.equal(manifest.icons.filter((entry) => purposes(entry).length > 1).length, 0);
+
+    for (const purpose of ['any', 'maskable']) {
+      for (const size of ['192x192', '512x512']) {
+        assert.ok(
+          manifest.icons.some((entry) => purposes(entry).includes(purpose) && entry.sizes === size),
+          `manifest needs a ${size} icon with purpose "${purpose}"`,
+        );
+      }
+    }
+  });
+
+  test('every manifest icon is actually served as an image', async () => {
+    const manifest = await (await server.call('/manifest.json')).json();
+    for (const entry of manifest.icons) {
+      const response = await server.call(entry.src);
+      assert.equal(response.status, 200, `${entry.src} should exist`);
+      assert.match(response.headers.get('content-type'), /^image\//);
+      await response.arrayBuffer();
+    }
   });
 
   test('refuses to serve files outside the web directory', async () => {
