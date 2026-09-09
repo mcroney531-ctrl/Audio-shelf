@@ -64,6 +64,45 @@ AUDIOSHELF_LIBRARY=/path/to/audiobooks npm start
 
 Open <http://localhost:8080> and create the first account — that one is the admin.
 
+### Windows
+
+No Docker needed — AudioShelf is plain Node with no native dependencies.
+
+```powershell
+winget install OpenJS.NodeJS.LTS      # Node 22.5+; skip if you have it
+winget install Git.Git                # skip if you have it
+
+git clone -b claude/self-hosted-audible-pwa-dhhhoi https://github.com/mcroney531-ctrl/Audio-shelf.git
+cd Audio-shelf
+.\start.ps1
+```
+
+`start.ps1` checks your Node version, installs dependencies once, asks where your audiobooks live,
+saves the answer to `.env`, and prints the address to open. After the first run, `.\start.ps1` is
+all you need.
+
+If PowerShell refuses to run the script ("running scripts is disabled on this system"):
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\start.ps1
+```
+
+Doing it by hand instead? PowerShell does not use the `VAR=value command` syntax — set variables
+first, or put them in `.env`:
+
+```powershell
+$env:AUDIOSHELF_LIBRARY = "D:\Audiobooks"
+npm install
+npm start
+```
+
+For the Audible import, add ffmpeg: `winget install Gyan.FFmpeg` (open a new terminal afterwards so
+it is on `PATH`).
+
+To keep it running after you close the window, use Task Scheduler: create a task that runs at logon,
+action `powershell.exe` with arguments `-WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\path\to\Audio-shelf\start.ps1"`.
+
 ### Docker
 
 ```bash
@@ -90,21 +129,29 @@ stops. AudioShelf needs a host that runs containers or plain Node with persisten
 ### Option A — your own machine, reachable over a tunnel (recommended)
 
 An audiobook library is tens or hundreds of gigabytes. Storing that on metered cloud disk is the
-expensive way to do this; a Raspberry Pi, NAS or old laptop at home is the cheap one. A tunnel then
-gives you a public HTTPS URL — which is also what the PWA install and offline downloads require.
+expensive way to do this; the Windows PC, Mac, Raspberry Pi or NAS the files are already on is the
+cheap one. A tunnel then gives you an HTTPS URL — which is also what the PWA install and offline
+downloads require.
 
-```bash
-docker compose up -d                      # or: npm start
+Start AudioShelf (`.\start.ps1` on Windows, `npm start` or `docker compose up -d` elsewhere), then
+put an HTTPS URL in front of it. Neither tool opens a port on your router.
 
-# Tailscale: private to your devices, no ports opened
+```powershell
+# Tailscale — private to your own devices, easiest to trust
+winget install tailscale.tailscale        # then sign in from the tray icon
 tailscale serve --bg 8080                 # https://<machine>.<tailnet>.ts.net
-tailscale funnel --bg 8080                # ...or public on the internet
+tailscale funnel --bg 8080                # ...or reachable from anywhere
 
-# Cloudflare Tunnel: public, your own domain, no ports opened
+# Cloudflare Tunnel — public URL, no account needed for a quick one
+winget install Cloudflare.cloudflared
 cloudflared tunnel --url http://localhost:8080
 ```
 
-Set `AUDIOSHELF_TRUST_PROXY=1` so session cookies are marked `Secure` behind the tunnel.
+On macOS or Linux the same two commands work after `brew install tailscale cloudflared` or your
+package manager's equivalent.
+
+Then add `AUDIOSHELF_TRUST_PROXY=1` to `.env` so session cookies are marked `Secure` behind the
+tunnel, and restart.
 
 ### Option B — Fly.io
 
@@ -246,7 +293,8 @@ still needs HTTPS for the service worker and offline downloads to work.
 
 ## Configuration
 
-Every setting is an environment variable (see `.env.example`):
+Every setting is an environment variable, and any of them can go in a `.env` file in the project
+root instead (copy `.env.example` to `.env` and edit). Real environment variables win over the file.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |

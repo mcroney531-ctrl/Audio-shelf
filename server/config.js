@@ -1,9 +1,39 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
+import { parseEnv } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(fileURLToPath(new URL('../', import.meta.url)));
+
+// node:sqlite is built in from 22.5 onwards; without it nothing here works, and
+// the failure is otherwise a cryptic module error.
+const [major, minor] = process.versions.node.split('.').map(Number);
+if (major < 22 || (major === 22 && minor < 5)) {
+  console.error(`AudioShelf needs Node 22.5 or newer (this is ${process.versions.node}).`);
+  console.error('Install the current LTS from https://nodejs.org, or: winget install OpenJS.NodeJS.LTS');
+  process.exit(1);
+}
+
+/**
+ * A .env file in the project root, for people who would rather edit a file than
+ * fight their shell's variable syntax. Real environment variables win over it.
+ */
+function loadDotEnv() {
+  const file = path.join(root, '.env');
+  if (!existsSync(file)) return;
+  try {
+    // Strip a UTF-8 BOM: Windows editors and PowerShell add one happily.
+    const text = readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
+    for (const [key, value] of Object.entries(parseEnv(text))) {
+      if (process.env[key] === undefined) process.env[key] = value;
+    }
+  } catch (err) {
+    console.warn(`Ignoring .env: ${err.message}`);
+  }
+}
+loadDotEnv();
+
 const env = process.env;
 
 const bool = (value, fallback) => {
