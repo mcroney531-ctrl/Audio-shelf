@@ -66,42 +66,47 @@ Open <http://localhost:8080> and create the first account — that one is the ad
 
 ### Windows
 
-No Docker needed — AudioShelf is plain Node with no native dependencies.
+No Docker needed — AudioShelf is plain Node with no native dependencies. One command does the lot:
 
 ```powershell
-winget install OpenJS.NodeJS.LTS      # Node 22.5+; skip if you have it
-winget install Git.Git                # skip if you have it
+irm https://raw.githubusercontent.com/mcroney531-ctrl/Audio-shelf/claude/self-hosted-audible-pwa-dhhhoi/install.ps1 | iex
+```
 
-git clone -b claude/self-hosted-audible-pwa-dhhhoi https://github.com/mcroney531-ctrl/Audio-shelf.git
-cd Audio-shelf
+`install.ps1` picks a folder you can actually write to, installs Node if it is missing (fixing
+`PATH` in the same window, so no reopening the terminal), downloads the project with or without git,
+and hands over to `start.ps1`. That in turn installs dependencies, asks where your audiobooks live,
+saves the answer to `.env` and prints the address to open. After the first run, `.\start.ps1` is all
+you need.
+
+Prefer to do it by hand? Note that **the user profile root is often not writable** — pick somewhere
+under Documents:
+
+```powershell
+mkdir $HOME\Documents\AudioShelf
+cd $HOME\Documents\AudioShelf
+git clone -b claude/self-hosted-audible-pwa-dhhhoi https://github.com/mcroney531-ctrl/Audio-shelf.git .
 .\start.ps1
 ```
 
-`start.ps1` checks your Node version, installs dependencies once, asks where your audiobooks live,
-saves the answer to `.env`, and prints the address to open. After the first run, `.\start.ps1` is
-all you need.
+Things Windows will throw at you:
 
-If PowerShell refuses to run the script ("running scripts is disabled on this system"):
+| Symptom | Fix |
+| --- | --- |
+| `running scripts is disabled on this system` | `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` then re-run |
+| `could not create work tree dir ... Permission denied` | You are in a folder you cannot write to (often the profile root, or Controlled Folder Access in Windows Security). Use `$HOME\Documents` |
+| `node` not recognised right after installing it | `PATH` only refreshes in new terminals — open a new PowerShell, or let `install.ps1` handle it |
+| `VAR=value npm start` does nothing useful | That is bash syntax. Use `.env`, or `$env:AUDIOSHELF_LIBRARY = "D:\Audiobooks"` on its own line first |
 
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\start.ps1
-```
-
-Doing it by hand instead? PowerShell does not use the `VAR=value command` syntax — set variables
-first, or put them in `.env`:
+For the Audible import, add ffmpeg:
 
 ```powershell
-$env:AUDIOSHELF_LIBRARY = "D:\Audiobooks"
-npm install
-npm start
+winget install Gyan.FFmpeg
 ```
 
-For the Audible import, add ffmpeg: `winget install Gyan.FFmpeg` (open a new terminal afterwards so
-it is on `PATH`).
+Open a new terminal afterwards so it is on `PATH`.
 
-To keep it running after you close the window, use Task Scheduler: create a task that runs at logon,
-action `powershell.exe` with arguments `-WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\path\to\Audio-shelf\start.ps1"`.
+To keep it running after you close the window, use Task Scheduler: a task that runs at logon, action
+`powershell.exe`, arguments `-WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\path\to\AudioShelf\start.ps1"`.
 
 ### Docker
 

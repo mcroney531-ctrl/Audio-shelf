@@ -92,9 +92,12 @@ $lines = foreach ($key in $settings.Keys) { "$key=$($settings[$key])" }
 
 # --- go ---------------------------------------------------------------------
 $port = $settings['AUDIOSHELF_PORT']
-$lan = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-  Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
-  Select-Object -First 1 -ExpandProperty IPAddress)
+$lan = $null
+if (Get-Command Get-NetIPAddress -ErrorAction SilentlyContinue) {
+  $lan = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
+    Select-Object -First 1 -ExpandProperty IPAddress)
+}
 
 Write-Step 'Starting AudioShelf'
 Write-Note "library : $($settings['AUDIOSHELF_LIBRARY'])"
