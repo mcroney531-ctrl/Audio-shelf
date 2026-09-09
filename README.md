@@ -78,6 +78,63 @@ full-screen, keeps playing with the screen off, and shows up on the lock screen.
 For iOS the site must be served over HTTPS (or `localhost`) for the service worker
 and downloads to work — put it behind a reverse proxy with a certificate.
 
+## Deploying it somewhere you can reach
+
+**Static hosts cannot run AudioShelf.** Netlify, Vercel, GitHub Pages and Cloudflare Pages serve
+files; they do not run a long-lived Node process, and they have no disk to keep your audiobooks,
+your SQLite database or your listening position on. Deploying this repo to one of them gives you a
+404 (the root has no `index.html` — the app shell lives in `web/`), and pointing the publish
+directory at `web/` only moves the failure: the shell loads, calls `/api/setup`, gets a 404 and
+stops. AudioShelf needs a host that runs containers or plain Node with persistent storage.
+
+### Option A — your own machine, reachable over a tunnel (recommended)
+
+An audiobook library is tens or hundreds of gigabytes. Storing that on metered cloud disk is the
+expensive way to do this; a Raspberry Pi, NAS or old laptop at home is the cheap one. A tunnel then
+gives you a public HTTPS URL — which is also what the PWA install and offline downloads require.
+
+```bash
+docker compose up -d                      # or: npm start
+
+# Tailscale: private to your devices, no ports opened
+tailscale serve --bg 8080                 # https://<machine>.<tailnet>.ts.net
+tailscale funnel --bg 8080                # ...or public on the internet
+
+# Cloudflare Tunnel: public, your own domain, no ports opened
+cloudflared tunnel --url http://localhost:8080
+```
+
+Set `AUDIOSHELF_TRUST_PROXY=1` so session cookies are marked `Secure` behind the tunnel.
+
+### Option B — Fly.io
+
+`fly.toml` is in the repo. One volume holds the library, the database and converted imports.
+
+```bash
+fly launch --no-deploy --copy-config      # pick your app name and region
+fly volumes create audioshelf_data --size 20    # GB — size it for your library
+fly deploy
+
+fly ssh console -C "mkdir -p /data/library"
+fly sftp shell                            # put local-book.m4b /data/library/Author/Book/
+```
+
+### Option C — Render
+
+`render.yaml` is in the repo: point Render at the repo and it builds the Dockerfile. The **disk is
+required** — Render's free plan has none, and without it every restart wipes your accounts and
+progress. Upload books over SSH once the service is up.
+
+Any VPS with Docker works the same way: `docker compose up -d` plus the reverse proxy config below.
+
+### What every host needs
+
+- **Persistent disk** for `AUDIOSHELF_DATA` (database, covers, instance secret) and for the library.
+- **HTTPS**, or the PWA will not install and offline downloads will not work.
+- **`AUDIOSHELF_TRUST_PROXY=1`** when something else terminates TLS.
+- **No request buffering** in front of it, so byte-range seeks stay responsive (see below).
+- **No idle-sleep**, or long streams get cut when the machine suspends mid-chapter.
+
 ## How the library should look
 
 One folder per book is the rule. Everything else is a fallback.

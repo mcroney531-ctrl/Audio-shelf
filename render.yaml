@@ -1,0 +1,25 @@
+# Render blueprint. Point Render at this repo and it builds the Dockerfile.
+# A persistent disk is required (the free plan has none) — the library, the
+# SQLite database and converted imports all live on it.
+services:
+  - type: web
+    name: audioshelf
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: AUDIOSHELF_DATA
+        value: /data
+      - key: AUDIOSHELF_LIBRARY
+        value: /data/library
+      - key: AUDIOSHELF_TRUST_PROXY
+        value: "1"
+      - key: AUDIOSHELF_SCAN_INTERVAL_MIN
+        value: "60"
+      # AUDIOSHELF_SECRET is generated into /data/secret on first boot; set it
+      # explicitly here if you ever want sessions to survive a disk reset.
+    disk:
+      name: audioshelf-data
+      mountPath: /data
+      sizeGB: 20
