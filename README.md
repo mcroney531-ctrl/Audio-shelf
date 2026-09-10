@@ -159,11 +159,18 @@ downloads require.
 Start AudioShelf (`.\start.ps1` on Windows, `npm start` or `docker compose up -d` elsewhere), then
 put an HTTPS URL in front of it. Neither tool opens a port on your router.
 
+Tailscale needs two things enabled once in the admin console before `serve` works:
+**MagicDNS** and **HTTPS Certificates**, both at
+[login.tailscale.com/admin/dns](https://login.tailscale.com/admin/dns). Without them the command
+fails with an HTTPS error.
+
 ```powershell
-# Tailscale — private to your own devices, easiest to trust
+# Tailscale - private to your own devices, easiest to trust
 winget install tailscale.tailscale        # then sign in from the tray icon
 tailscale serve --bg 8080                 # https://<machine>.<tailnet>.ts.net
+tailscale serve status                    # prints the URL
 tailscale funnel --bg 8080                # ...or reachable from anywhere
+tailscale serve reset                     # undo
 
 # Cloudflare Tunnel — public URL, no account needed for a quick one
 winget install Cloudflare.cloudflared
@@ -173,8 +180,18 @@ cloudflared tunnel --url http://localhost:8080
 On macOS or Linux the same two commands work after `brew install tailscale cloudflared` or your
 package manager's equivalent.
 
+On Windows `tailscale serve` needs an elevated PowerShell; if it says access denied, reopen the
+terminal as Administrator. The setting persists across reboots.
+
 Then add `AUDIOSHELF_TRUST_PROXY=1` to `.env` so session cookies are marked `Secure` behind the
-tunnel, and restart.
+tunnel, and restart. Phones need the Tailscale app installed and signed into the same account
+before the URL resolves.
+
+Cloudflare Tunnel is the alternative when a device cannot run Tailscale, or you want your own
+domain. Two things to weigh: traffic passes through Cloudflare's edge rather than going directly
+between your devices, and their free plan caps request bodies (around 100 MB at the time of
+writing), which is below most audiobooks - so uploads through the tunnel may fail even though
+playback is fine. Check their current limits before relying on it.
 
 ### Option B — Fly.io
 
