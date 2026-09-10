@@ -2,6 +2,7 @@ import { h, icon, mount, clear, humanDuration, clockTime, relativeTime, toast } 
 import { api, coverUrl } from './api.js';
 import { downloadBook, removeDownload, isDownloaded, downloadIndex, storageUsage, formatBytes, clearAllDownloads, requestPersistence } from './offline.js';
 import { runInstallChecks, promptInstall, canPrompt, isStandalone, installReport } from './install.js';
+import { uploadFile } from './api.js';
 
 /** Deterministic colour so every book without art still looks like a specific book. */
 function seedColor(text) {
@@ -424,6 +425,7 @@ export async function settingsView(ctx) {
       h('button.btn.btn--ghost', { onclick: ctx.signOut }, icon('logout'), 'Sign out')),
     passwordForm));
 
+  node.append(await tokenSection(ctx));
   if (ctx.user.isAdmin) node.append(await adminSection(ctx));
   return node;
 }
@@ -480,6 +482,77 @@ function installSection() {
       h('button.btn.btn--ghost', { onclick: refresh }, icon('refresh'), 'Re-check')),
     list);
   refresh();
+  return wrap;
+}
+
+/**
+ * API tokens: how a script, another machine, or an agent talks to AudioShelf
+ * without a browser session.
+ */
+async function tokenSection(ctx) {
+  const wrap = h('section.section');
+  const list = h('div.list');
+  const fresh = h('div');
+
+  async function render() {
+    const { tokens } = await api.tokens();
+    mount(list, tokens.length ? tokens.map((token) => h('div.list__row',
+      h('span.list__num', icon('key', 15)),
+      h('span.list__name', token.label),
+      h('span.list__time', token.lastUsedAt ? `used ${relativeTime(token.lastUsedAt)}` : 'never used'),
+      h('button.iconbtn', {
+        title: 'Revoke this token',
+        onclick: async () => {
+          if (!confirm(`Revoke "${token.label}"? Anything using it stops working.`)) return;
+          await api.revokeToken(token.id);
+          render();
+        },
+      }, icon('trash', 16))))
+      : h('p.tag', { style: { padding: '10px 12px' } }, 'No tokens yet.'));
+  }
+
+  const form = h('form.form', {
+    style: { display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' },
+    onsubmit: async (event) => {
+      event.preventDefault();
+      const label = new FormData(event.target).get('label') || 'API token';
+      const { token } = await api.createToken(label);
+      event.target.reset();
+      // Shown once - the server only keeps a hash.
+      mount(fresh,
+        h('p.tag', { style: { margin: '14px 0 6px', color: 'var(--amber)' } },
+          'Copy this now — it is not shown again.'),
+        h('div.token', token),
+        h('div.chips', { style: { marginTop: '10px' } },
+          h('button.btn.btn--ghost', {
+            type: 'button',
+            onclick: async () => {
+              try { await navigator.clipboard.writeText(token); toast('Token copied'); }
+              catch { toast('Select it and copy manually', 'bad'); }
+            },
+          }, 'Copy token'),
+          h('button.btn.btn--ghost', {
+            type: 'button',
+            onclick: async () => {
+              const example = `curl -X POST "${location.origin}/api/upload?name=book.m4b&folder=Author/Title" \\\n  -H "Authorization: Bearer ${token}" \\\n  --data-binary @book.m4b`;
+              try { await navigator.clipboard.writeText(example); toast('Upload command copied'); }
+              catch { toast('Clipboard blocked', 'bad'); }
+            },
+          }, 'Copy upload command')));
+      render();
+    },
+  },
+    h('label', { style: { flex: '1 1 200px' } }, 'What is it for?',
+      h('input', { name: 'label', placeholder: 'laptop, phone, agent…', autocomplete: 'off' })),
+    h('button.btn', { type: 'submit' }, icon('key', 16), 'Create token'));
+
+  wrap.append(
+    sectionHead('API tokens'),
+    h('p.detail__blurb', { style: { marginBottom: '14px' } },
+      'A token lets a script or an agent upload books and read the library without signing in through a browser. ',
+      'It carries your permissions, so treat it like a password — and revoke it here the moment you no longer need it.'),
+    form, fresh, list);
+  await render();
   return wrap;
 }
 
@@ -604,10 +677,90 @@ const STATUS_LABEL = {
   failed: 'Failed',
 };
 
+/**
+ * Drag books straight onto the page. Files stream to the library folder and the
+ * watcher puts them on the shelf, so this works from a phone as well as a desk.
+ */
+function uploadSection(onDone) {
+  const wrap = h('section.section');
+  const queue = h('div');
+  const author = h('input', { placeholder: 'Author (optional)', autocomplete: 'off' });
+  const title = h('input', { placeholder: 'Book title (optional)', autocomplete: 'off' });
+  const picker = h('input', {
+    type: 'file',
+    multiple: true,
+    accept: '.mp3,.m4b,.m4a,.mp4,.aac,.ogg,.opus,.flac,.wav,.aax,.aaxc,.voucher,.jpg,.jpeg,.png',
+    style: { display: 'none' },
+    onchange: (event) => { send([...event.target.files]); event.target.value = ''; },
+  });
+
+  const zone = h('div.dropzone', {
+    onclick: () => picker.click(),
+    ondragover: (event) => { event.preventDefault(); zone.classList.add('dropzone--over'); },
+    ondragleave: () => zone.classList.remove('dropzone--over'),
+    ondrop: (event) => {
+      event.preventDefault();
+      zone.classList.remove('dropzone--over');
+      send([...event.dataTransfer.files]);
+    },
+  },
+    icon('download', 28),
+    h('h3', 'Drop audiobooks here'),
+    h('p', 'or click to choose files — mp3, m4b, flac, or an .aax to convert later'));
+
+  async function send(files) {
+    if (!files.length) return;
+    const folder = [author.value.trim(), title.value.trim()].filter(Boolean).join('/');
+    let failures = 0;
+
+    for (const file of files) {
+      const bar = h('i', { style: { width: '0%' } });
+      const state = h('span.uploadrow__state', 'waiting');
+      queue.prepend(h('div.uploadrow',
+        h('div.uploadrow__name', file.name), state, h('div.progressline', bar)));
+      try {
+        await uploadFile(file, {
+          folder,
+          onProgress: (fraction) => {
+            bar.style.width = `${Math.round(fraction * 100)}%`;
+            state.textContent = `${Math.round(fraction * 100)}% of ${formatBytes(file.size)}`;
+          },
+        });
+        bar.style.width = '100%';
+        state.textContent = 'uploaded';
+        state.style.color = 'var(--sage)';
+      } catch (err) {
+        failures++;
+        state.textContent = err.message;
+        state.style.color = 'var(--rust)';
+      }
+    }
+
+    if (failures < files.length) {
+      author.value = '';
+      title.value = '';
+      toast('Uploaded — scanning the library');
+      await api.scan().catch(() => {});
+      setTimeout(() => onDone?.(), 2500);
+    }
+  }
+
+  wrap.append(
+    sectionHead('Add books from this device'),
+    h('div.form', { style: { gridTemplateColumns: '1fr 1fr', display: 'grid', marginBottom: '14px' } },
+      h('label', 'Author', author),
+      h('label', 'Title', title)),
+    h('p.tag', { style: { marginBottom: '12px' } },
+      'Files land in a folder named after these two — but tags inside the file win over folder names, ',
+      'so a well-tagged book keeps its own title. Leave both blank to drop files into the library root.'),
+    zone, picker, queue);
+  return wrap;
+}
+
 export async function importsView(ctx) {
   if (!ctx.user.isAdmin) {
     return h('div.empty', h('h2', 'Administrators only'),
-      h('p', 'Importing Audible files changes the shelf for everyone, so it is an admin job.'));
+      h('p', 'Adding books changes the shelf for everyone, so it is an admin job.'));
   }
 
   const node = h('div');
@@ -618,13 +771,13 @@ export async function importsView(ctx) {
 
   node.append(h('header.topbar',
     h('div',
-      h('p.eyebrow', 'Your Audible downloads'),
-      h('h1', 'Imports')),
+      h('p.eyebrow', 'Get books onto the shelf'),
+      h('h1', 'Add books')),
     h('button.btn', {
       onclick: async () => { await api.scan(); toast('Looking for new files…'); setTimeout(render, 2500); },
     }, icon('refresh'), 'Rescan')));
 
-  node.append(toolsBox, keyBox, list);
+  node.append(uploadSection(() => render()), toolsBox, keyBox, list);
 
   async function render() {
     const data = await api.imports();

@@ -24,7 +24,7 @@ const NAV = [
   ['#/library', 'shelf', 'Library'],
   ['#/listening', 'headphones', 'Listening'],
   ['#/downloads', 'download', 'Downloads'],
-  ['#/imports', 'key', 'Imports', { admin: true }],
+  ['#/imports', 'key', 'Add books', { admin: true }],
   ['#/settings', 'settings', 'Settings'],
 ];
 

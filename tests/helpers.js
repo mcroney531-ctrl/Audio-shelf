@@ -54,9 +54,12 @@ export async function startTestServer({ seed = true, scan = true } = {}) {
   const call = async (path, options = {}) => {
     const headers = { ...(options.headers || {}) };
     if (jar.size) headers.cookie = [...jar].map(([key, value]) => `${key}=${value}`).join('; ');
-    if (options.body && typeof options.body !== 'string') {
+    // Only plain objects become JSON; Buffers and strings go through as-is, or
+    // binary uploads would be re-encoded on the way out.
+    const body = options.body;
+    if (body && typeof body !== 'string' && !Buffer.isBuffer(body) && !ArrayBuffer.isView(body)) {
       headers['content-type'] = 'application/json';
-      options = { ...options, body: JSON.stringify(options.body) };
+      options = { ...options, body: JSON.stringify(body) };
     }
     const response = await fetch(`${base}${path}`, { ...options, headers, redirect: 'manual' });
     for (const cookie of response.headers.getSetCookie?.() || []) {

@@ -6,9 +6,10 @@ import { serveStatic, streamTrack, sendCover } from './files.js';
 import { scanLibrary, scanState } from './scanner.js';
 import { watchLibrary } from './watcher.js';
 import {
-  COOKIE, userForToken, requireUser, pruneSessions, userCount,
+  COOKIE, userForToken, userForApiToken, requireUser, requireAdmin, pruneSessions, userCount,
 } from './auth.js';
 import { parseCookies, send, HttpError, notFound } from './http.js';
+import { receiveUpload } from './upload.js';
 
 migrate();
 pruneSessions();
@@ -22,9 +23,11 @@ async function handle(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies[COOKIE];
+  // Browsers send the session cookie; scripts and agents send a bearer token.
+  const bearer = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization || '')?.[1];
   const ctx = {
     req, res, url, token,
-    user: userForToken(token),
+    user: userForToken(token) || (bearer ? userForApiToken(bearer) : null),
     secure: isSecure(req),
     params: {},
   };
@@ -35,6 +38,15 @@ async function handle(req, res) {
     requireUser(ctx);
     if (media[2]) return streamTrack(req, res, Number(media[2]));
     return sendCover(req, res, Number(media[3]));
+  }
+
+  if (url.pathname === '/api/upload' && req.method === 'POST') {
+    requireAdmin(ctx);
+    const result = await receiveUpload(req, {
+      name: url.searchParams.get('name') || req.headers['x-file-name'],
+      folder: url.searchParams.get('folder') || req.headers['x-file-folder'],
+    });
+    return send(res, 201, { file: result });
   }
 
   if (url.pathname.startsWith('/api/')) {

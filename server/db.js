@@ -128,6 +128,19 @@ const MIGRATIONS = [
   );
   CREATE INDEX imports_status ON imports(status, discovered_at DESC);
   `,
+
+  // 3 — API tokens for scripts, phones and agents
+  `
+  CREATE TABLE api_tokens (
+    id           INTEGER PRIMARY KEY,
+    token_hash   TEXT NOT NULL UNIQUE,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    label        TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    last_used_at INTEGER
+  );
+  CREATE INDEX api_tokens_user ON api_tokens(user_id);
+  `,
 ];
 
 const version = () => db.prepare('PRAGMA user_version').get().user_version;

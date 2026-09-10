@@ -106,6 +106,37 @@ export function requireAdmin(ctx) {
   return user;
 }
 
+/**
+ * API tokens for scripts and agents. Stored hashed, shown once at creation,
+ * and carrying the permissions of the user who made them.
+ */
+export function createToken(userId, label) {
+  const token = `as_${randomBytes(24).toString('base64url')}`;
+  db.prepare(
+    'INSERT INTO api_tokens (token_hash, user_id, label, created_at) VALUES (?, ?, ?, ?)'
+  ).run(tokenHash(token), userId, String(label || 'API token').slice(0, 60), Date.now());
+  return token;
+}
+
+export function userForApiToken(token) {
+  if (!token || !token.startsWith('as_')) return null;
+  const row = db.prepare(`
+    SELECT t.id, u.id AS user_id, u.username, u.display_name, u.is_admin
+    FROM api_tokens t JOIN users u ON u.id = t.user_id
+    WHERE t.token_hash = ?
+  `).get(tokenHash(token));
+  if (!row) return null;
+  db.prepare('UPDATE api_tokens SET last_used_at = ? WHERE id = ?').run(Date.now(), row.id);
+  return { id: row.user_id, username: row.username, display_name: row.display_name, is_admin: row.is_admin };
+}
+
+export const listTokens = (userId) =>
+  db.prepare('SELECT id, label, created_at AS createdAt, last_used_at AS lastUsedAt FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC')
+    .all(userId);
+
+export const revokeToken = (userId, id) =>
+  db.prepare('DELETE FROM api_tokens WHERE id = ? AND user_id = ?').run(id, userId).changes > 0;
+
 export function pruneSessions() {
   db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
 }

@@ -12,7 +12,9 @@ import {
 import {
   login, logout, createUser, getUser, userCount, requireUser, requireAdmin,
   sessionCookie, clearCookie, publicUser, hashPassword, verifyPassword, logoutOtherSessions,
+  createToken, listTokens, revokeToken,
 } from './auth.js';
+import { uploadTarget } from './upload.js';
 
 const num = (value, fallback = 0) => {
   if (value === null || value === undefined || value === '') return fallback;
@@ -271,10 +273,30 @@ const routes = [
   }],
 
   // --- Audible (.aax/.aaxc) imports -------------------------------------
+  // --- API tokens (for scripts, agents and other machines) ---------------
+  ['GET', '/api/me/tokens', (ctx) => {
+    const user = requireUser(ctx);
+    send(ctx.res, 200, { tokens: listTokens(user.id) });
+  }],
+
+  ['POST', '/api/me/tokens', async (ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(ctx.req).catch(() => ({}));
+    // Shown once: only the hash is kept.
+    send(ctx.res, 201, { token: createToken(user.id, body.label), tokens: listTokens(user.id) });
+  }],
+
+  ['DELETE', '/api/me/tokens/:id', (ctx) => {
+    const user = requireUser(ctx);
+    if (!revokeToken(user.id, num(ctx.params.id, -1))) throw notFound('No such token');
+    send(ctx.res, 200, { ok: true });
+  }],
+
   ['GET', '/api/admin/imports', async (ctx) => {
     requireAdmin(ctx);
     const stored = storedActivationBytes();
     send(ctx.res, 200, {
+      upload: { ...(await uploadTarget()), maxGb: config.uploadMaxGb },
       tools: await checkTools(),
       // Never echo the key back in full; enough to confirm which one is saved.
       activationBytes: stored ? `${stored.slice(0, 2)}${'*'.repeat(4)}${stored.slice(-2)}` : null,

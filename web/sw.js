@@ -58,6 +58,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== location.origin) return;
 
+  if (url.pathname === '/api/upload') return;   // never intercept an upload
   if (isMedia(url.pathname)) return event.respondWith(mediaFirst(request));
   if (request.mode === 'navigate') return event.respondWith(navigation(request));
   if (url.pathname.startsWith('/api/')) {

@@ -20,6 +20,7 @@ a player that remembers your position across every device you sign in on.
 - Chapters from embedded `m4b` chapter markers, or one chapter per file for multi-file books
 - Incremental re-scans: unchanged books are fingerprinted and skipped
 - Watches the library folder, so books you drop in appear on the shelf by themselves
+- Drag-and-drop upload from any device, and an API token so scripts and agents can add books too
 - Search and filter by title/author/narrator/series, in progress, finished, unstarted
 
 **Player**
@@ -111,8 +112,8 @@ Open a new terminal afterwards so it is on `PATH`.
 You set the library folder once. After that PowerShell is not part of the routine:
 
 - **Adding books** — copy them into your library folder in Explorer. AudioShelf watches that folder
-  and rescans a few seconds after the copy finishes; the book appears on the shelf on its own. The
-  Imports page does the same for `.aax`/`.aaxc` files.
+  and rescans a few seconds after the copy finishes; the book appears on the shelf on its own. Or
+  drag them onto the **Add books** page from any device, including your phone.
 - **Starting it** — run it at logon with no terminal window:
 
   ```powershell
@@ -234,6 +235,41 @@ Tags win over filenames. AudioShelf reads:
 
 Multi-file books are ordered by disc/track number, then by natural filename order.
 
+## Adding books from another device
+
+Copying files onto the server is the fastest way to add books, but it is not the only one. The
+**Add books** page (admins only) takes drag-and-dropped files, streams them into the library folder,
+and the watcher puts them on the shelf. That works from a phone, a laptop, or anything with a
+browser.
+
+Optional Author and Title boxes decide which folder the files land in. Tags inside the file still
+win over folder names, so a properly tagged book keeps its own title regardless.
+
+### From a script, another machine, or an agent
+
+Create a token under **Settings → API tokens**. It is shown once, stored only as a hash, and carries
+the permissions of whoever made it — treat it like a password and revoke it when you are done.
+
+```bash
+curl -X POST "https://your-audioshelf/api/upload?name=book.m4b&folder=Author/Title" \
+  -H "Authorization: Bearer as_your_token_here" \
+  --data-binary @book.m4b
+```
+
+The body is the raw file — no multipart envelope — so nothing has to buffer the whole book in
+memory at either end. The same token works for the read APIs (`/api/books`, `/api/shelves`).
+
+This is also the answer to "can an AI agent file my audiobooks for me":
+
+- An agent running **on the same machine** (a local Claude Code or Cowork session) does not need any
+  of this — it can tag the file and drop it straight into the library folder.
+- An agent running **somewhere else** needs a token and a reachable URL, i.e. the tunnel from the
+  deploying section. Then the `curl` above is all it takes.
+
+Uploads are limited to audio files, cover images and Audible vouchers, capped at
+`AUDIOSHELF_UPLOAD_MAX_GB`, and written to a `.part` file first so a half-finished transfer never
+gets scanned.
+
 ## Importing your Audible downloads
 
 Audible files are encrypted, so nothing can play them until they are converted. AudioShelf
@@ -327,6 +363,8 @@ root instead (copy `.env.example` to `.env` and edit). Real environment variable
 | `AUDIOSHELF_SCAN_INTERVAL_MIN` | `0` | Re-scan every N minutes (0 = never) |
 | `AUDIOSHELF_WATCH` | `1` | Watch the library folder and rescan when it changes |
 | `AUDIOSHELF_WATCH_DELAY_SEC` | `15` | Quiet period after the last change before rescanning |
+| `AUDIOSHELF_UPLOAD_DIR` | the library | Where uploads are written (set this if the library is read-only) |
+| `AUDIOSHELF_UPLOAD_MAX_GB` | `8` | Largest single upload |
 | `AUDIOSHELF_SESSION_DAYS` | `30` | Session lifetime |
 | `AUDIOSHELF_TRUST_PROXY` | `0` | Read `X-Forwarded-Proto` for the Secure cookie flag |
 | `AUDIOSHELF_SECRET` | generated | Session signing key; kept in `data/secret` if unset |

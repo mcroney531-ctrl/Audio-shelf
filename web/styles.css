@@ -799,3 +799,49 @@ th { color: var(--paper-dim); font-weight: 500; font-size: 0.72rem; letter-spaci
   .dock__body { grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; padding: 9px 12px; min-height: 64px; }
   .dock__art { width: 42px; height: 42px; }
 }
+
+/* --- upload dropzone ------------------------------------------------------ */
+.dropzone {
+  border: 2px dashed var(--line-firm);
+  border-radius: var(--radius);
+  padding: 30px 24px;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s, transform 0.2s var(--ease);
+  cursor: pointer;
+}
+.dropzone:hover { border-color: var(--amber); }
+.dropzone--over {
+  border-color: var(--amber);
+  background: color-mix(in oklab, var(--amber) 10%, transparent);
+  transform: scale(1.005);
+}
+.dropzone h3 {
+  font-family: var(--display);
+  font-size: 1.15rem;
+  margin-bottom: 6px;
+}
+.dropzone p { color: var(--paper-mute); margin: 0; font-size: 0.88rem; }
+.dropzone svg { width: 28px; height: 28px; color: var(--amber); margin-bottom: 10px; }
+
+.uploadrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 14px;
+  align-items: center;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+.uploadrow__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; }
+.uploadrow__state { font-size: 0.78rem; color: var(--paper-mute); font-variant-numeric: tabular-nums; }
+.uploadrow .progressline { grid-column: 1 / -1; }
+
+.token {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  background: var(--ink);
+  border: 1px solid var(--line-firm);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  word-break: break-all;
+  user-select: all;
+}

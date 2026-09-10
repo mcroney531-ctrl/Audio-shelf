@@ -80,6 +80,9 @@ export const config = {
   // Explorer show up without anyone pressing Scan.
   watch: bool(env.AUDIOSHELF_WATCH, true),
   watchDelaySec: num(env.AUDIOSHELF_WATCH_DELAY_SEC, 15),
+  // Uploads land in the library itself, unless it is mounted read-only.
+  uploadDir: path.resolve(root, env.AUDIOSHELF_UPLOAD_DIR || env.AUDIOSHELF_LIBRARY || 'library'),
+  uploadMaxGb: num(env.AUDIOSHELF_UPLOAD_MAX_GB, 8),
   scanIntervalMin: num(env.AUDIOSHELF_SCAN_INTERVAL_MIN, 0),
   sessionTtlDays: num(env.AUDIOSHELF_SESSION_DAYS, 30),
   trustProxy: bool(env.AUDIOSHELF_TRUST_PROXY, false),
