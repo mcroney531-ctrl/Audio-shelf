@@ -227,9 +227,9 @@ HTTPS), nothing else. Should Windows Firewall block it:
 New-NetFirewallRule -DisplayName "AudioShelf" -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow
 ```
 
-Then add `AUDIOSHELF_TRUST_PROXY=1` to `.env` so session cookies are marked `Secure` behind the
-tunnel, and restart. Phones need the Tailscale app installed and signed into the same account
-before the URL resolves.
+Then restart AudioShelf with `.\start.ps1 -TrustProxy` so session cookies are marked `Secure`
+behind the tunnel. This is a hardening step, not a requirement - signing in works either way.
+Phones need the Tailscale app installed and signed into the same account before the URL resolves.
 
 Cloudflare Tunnel is the alternative when a device cannot run Tailscale, or you want your own
 domain. Two things to weigh: traffic passes through Cloudflare's edge rather than going directly

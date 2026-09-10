@@ -3,6 +3,7 @@
 #   Right-click this file -> "Run with PowerShell", or from a PowerShell window:
 #     .\start.ps1
 #     .\start.ps1 -Library "D:\Audiobooks" -Port 8080
+#     .\start.ps1 -TrustProxy      # when a tunnel or proxy terminates HTTPS
 #
 # On the first run it checks Node, installs dependencies, asks where your
 # audiobooks live and writes that to .env so later runs need no arguments.
@@ -10,6 +11,7 @@
 param(
   [string]$Library,
   [int]$Port = 0,
+  [switch]$TrustProxy,
   [switch]$SkipInstall
 )
 
@@ -62,6 +64,9 @@ if (Test-Path $envFile) {
 
 if ($Library) { $settings['AUDIOSHELF_LIBRARY'] = $Library }
 if ($Port -gt 0) { $settings['AUDIOSHELF_PORT'] = "$Port" }
+# Behind a tunnel (Tailscale serve, Cloudflare) the connection is HTTPS by the
+# time it reaches a browser, so session cookies can be marked Secure.
+if ($TrustProxy) { $settings['AUDIOSHELF_TRUST_PROXY'] = '1' }
 
 if (-not $settings['AUDIOSHELF_LIBRARY']) {
   Write-Step 'Where do your audiobooks live?'
@@ -121,6 +126,7 @@ foreach ($entry in $addresses) {
   if ($label -like '*Tailscale*') { $label = 'Tailscale' }
   Write-Host ("  {0,-11}: http://{1}:{2}" -f $label, $entry.IP, $port) -ForegroundColor Yellow
 }
+if ($settings['AUDIOSHELF_TRUST_PROXY'] -eq '1') { Write-Note 'trusting a proxy for HTTPS (cookies marked Secure)' }
 Write-Note 'The first account you create is the administrator.'
 Write-Note 'Installing to a phone home screen needs HTTPS - see the README.'
 Write-Host "`n  Ctrl+C to stop.`n" -ForegroundColor DarkGray
