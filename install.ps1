@@ -144,10 +144,18 @@ if (-not (Test-Path $starter)) {
   return
 }
 
+# A shortcut, so starting it later never means remembering this path. Never let
+# a cosmetic step abort the install.
+$shortcut = Join-Path $target 'scripts\create-shortcut.ps1'
+if (Test-Path $shortcut) {
+  try { & $shortcut -Quiet } catch { Write-Note "could not create a shortcut ($($_.Exception.Message))" }
+}
+
 if ($NoStart) {
   Write-Step 'Done'
   Write-Note "cd `"$target`""
   Write-Note '.\start.ps1'
+  Write-Note 'or double-click the AudioShelf shortcut on your Desktop'
   return
 }
 

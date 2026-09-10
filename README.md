@@ -114,7 +114,9 @@ You set the library folder once. After that PowerShell is not part of the routin
 - **Adding books** — copy them into your library folder in Explorer. AudioShelf watches that folder
   and rescans a few seconds after the copy finishes; the book appears on the shelf on its own. Or
   drag them onto the **Add books** page from any device, including your phone.
-- **Starting it** — run it at logon with no terminal window:
+- **Starting it** — double-click the **AudioShelf** shortcut the installer puts on your Desktop
+  (`.\scripts\create-shortcut.ps1` creates it again if you need it), or run it at logon with no
+  terminal window at all:
 
   ```powershell
   .\scripts\install-task.ps1          # registers a scheduled task and starts it
