@@ -98,6 +98,8 @@ Things Windows will throw at you:
 | `could not create work tree dir ... Permission denied` | You are in a folder you cannot write to (often the profile root, or Controlled Folder Access in Windows Security). Use `$HOME\Documents` |
 | `node` not recognised right after installing it | `PATH` only refreshes in new terminals — open a new PowerShell, or let `install.ps1` handle it |
 | `VAR=value npm start` does nothing useful | That is bash syntax. Use `.env`, or `$env:AUDIOSHELF_LIBRARY = "D:\Audiobooks"` on its own line first |
+| Remote access tools connect then hang: a sign-in button that does nothing, DNS lookups timing out, tunnels dropping | A VPN client (Norton VPN and friends run WireGuard) or antivirus intercepting traffic. Check with `Test-NetConnection api.anthropic.com -Port 443` - `InterfaceAlias` should be your Wi-Fi or Ethernet adapter, not a VPN one. Note such a VPN also hands out `100.x` addresses, which look exactly like an ISP's carrier-grade NAT |
+| A phone on the same Wi-Fi cannot reach the server | Windows Firewall, or antivirus blocking inbound connections to `node.exe`. See the firewall rule above |
 
 For the Audible import, add ffmpeg:
 
