@@ -747,7 +747,7 @@ function uploadSection(onDone) {
 
   wrap.append(
     sectionHead('Add books from this device'),
-    h('div.form', { style: { gridTemplateColumns: '1fr 1fr', display: 'grid', marginBottom: '14px' } },
+    h('div.form.form--split', { style: { marginBottom: '14px' } },
       h('label', 'Author', author),
       h('label', 'Title', title)),
     h('p.tag', { style: { marginBottom: '12px' } },

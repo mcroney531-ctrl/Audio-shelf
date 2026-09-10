@@ -684,6 +684,10 @@ input[type='range']::-moz-range-thumb {
 
 .form { display: grid; gap: 15px; margin-top: 22px; }
 .form label { display: grid; gap: 6px; font-size: 0.82rem; color: var(--paper-mute); }
+/* Two across when there is room, stacked on a phone. */
+.form--split { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.form--split label { min-width: 0; }
+.form--split input { min-width: 0; width: 100%; }
 .form input, .form select, .form textarea {
   background: var(--ink);
   border: 1px solid var(--line-firm);
@@ -782,11 +786,18 @@ th { color: var(--paper-dim); font-weight: 500; font-size: 0.72rem; letter-spaci
     display: grid;
     justify-items: center;
     gap: 3px;
-    padding: 9px 4px 11px;
+    padding: 9px 2px 11px;
+    min-width: 0;
     color: var(--paper-dim);
     text-decoration: none;
-    font-size: 0.66rem;
-    letter-spacing: 0.04em;
+    font-size: 0.64rem;
+    letter-spacing: 0.02em;
+  }
+  .tabbar a span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .tabbar a svg { width: 21px; height: 21px; }
   .tabbar a[aria-current='page'] { color: var(--amber); }

@@ -19,13 +19,14 @@ const setTheme = (value) => {
 };
 setTheme(theme());
 
+// `short` is what the phone tab bar shows, where horizontal room is scarce.
 const NAV = [
   ['#/', 'home', 'Shelf'],
   ['#/library', 'shelf', 'Library'],
   ['#/listening', 'headphones', 'Listening'],
-  ['#/downloads', 'download', 'Downloads'],
-  ['#/imports', 'key', 'Add books', { admin: true }],
-  ['#/settings', 'settings', 'Settings'],
+  ['#/downloads', 'download', 'Downloads', { short: 'Saved' }],
+  ['#/imports', 'key', 'Add books', { admin: true, short: 'Add' }],
+  ['#/settings', 'settings', 'Settings', { short: 'Settings' }],
 ];
 
 const ROUTES = [
@@ -125,10 +126,12 @@ function buildShell(ctx) {
           h('div.tag', ctx.user.isAdmin ? 'Administrator' : 'Listener')),
         h('button.iconbtn', { title: 'Sign out', onclick: ctx.signOut }, icon('logout', 17)))));
 
-  // The phone bar keeps the four places you actually tap.
+  // Everything but Listening, which is a filtered view of Library. Adding books
+  // from a phone is the whole point of uploads, so it belongs here.
   const tabbar = h('nav.tabbar', ...visible
-    .filter(([href]) => href !== '#/listening' && href !== '#/imports')
-    .map(([href, iconName, label]) => h('a', { href }, icon(iconName), h('span', label))));
+    .filter(([href]) => href !== '#/listening')
+    .map(([href, iconName, label, options]) =>
+      h('a', { href, title: label }, icon(iconName), h('span', options?.short || label))));
 
   const main = h('main.main');
   mount(app, rail, main, tabbar);
