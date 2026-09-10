@@ -183,6 +183,36 @@ package manager's equivalent.
 On Windows `tailscale serve` needs an elevated PowerShell; if it says access denied, reopen the
 terminal as Administrator. The setting persists across reboots.
 
+If the Tailscale tray app will not sign in - the button does nothing, and the window refuses to
+reopen - the Windows service is usually the problem, not the app. Running the GUI as Administrator
+makes it worse: it is meant to run as your own user, with the service holding the privileges. Skip
+the GUI instead:
+
+```powershell
+Start-Service Tailscale   # elevated
+tailscale up              # prints a login URL to paste into a browser
+```
+
+**The lowest-friction alternative** is a Cloudflare quick tunnel, which needs no service and no
+account:
+
+```powershell
+winget install Cloudflare.cloudflared
+cloudflared tunnel --url http://localhost:8080
+```
+
+It prints a throwaway `https://<random>.trycloudflare.com` URL, which is enough to prove the PWA
+install and offline downloads work. The URL changes on every run and is public while it lives, so
+it suits testing better than daily use.
+
+And if you only ever listen at home, none of this is required: a phone on the same Wi-Fi can open
+`http://<pc-address>:8080` directly. You lose the PWA install and offline downloads (both need
+HTTPS), nothing else. Should Windows Firewall block it:
+
+```powershell
+New-NetFirewallRule -DisplayName "AudioShelf" -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow
+```
+
 Then add `AUDIOSHELF_TRUST_PROXY=1` to `.env` so session cookies are marked `Secure` behind the
 tunnel, and restart. Phones need the Tailscale app installed and signed into the same account
 before the URL resolves.
