@@ -289,6 +289,27 @@ describe('static app shell', () => {
     }
   });
 
+  test('answers a malformed request without wedging the connection', async () => {
+    const { connect } = await import('node:net');
+    const port = Number(new URL(server.base).port);
+    const reply = await new Promise((resolve, reject) => {
+      const socket = connect(port, '127.0.0.1', () => socket.write('NOT-A-METHOD / BAD\r\n\r\n'));
+      let text = '';
+      socket.setTimeout(3000, () => { socket.destroy(); reject(new Error('timed out')); });
+      socket.on('data', (chunk) => { text += chunk; });
+      socket.on('close', () => resolve(text));
+      socket.on('error', reject);
+    });
+    assert.match(reply, /^HTTP\/1\.1 400 Bad Request/);
+    // Idle keep-alive timeouts must stay silent instead: a response on a channel
+    // with no request in flight makes proxies log an "unsolicited response".
+    const { clientErrorReply } = await import('../server/http.js');
+    assert.equal(clientErrorReply({ code: 'ERR_HTTP_REQUEST_TIMEOUT' }), null);
+    assert.equal(clientErrorReply({ code: 'ECONNRESET' }), null);
+    assert.match(clientErrorReply({ code: 'HPE_INVALID_METHOD' }), /400 Bad Request/);
+    assert.match(clientErrorReply({ code: 'HPE_HEADER_OVERFLOW' }), /431/);
+  });
+
   test('refuses to serve files outside the web directory', async () => {
     const response = await server.call('/js/%2e%2e/%2e%2e/server/config.js');
     assert.equal(response.status, 404);

@@ -8,7 +8,7 @@ import { watchLibrary } from './watcher.js';
 import {
   COOKIE, userForToken, userForApiToken, requireUser, requireAdmin, pruneSessions, userCount,
 } from './auth.js';
-import { parseCookies, send, HttpError, notFound } from './http.js';
+import { parseCookies, send, HttpError, notFound, clientErrorReply } from './http.js';
 import { receiveUpload } from './upload.js';
 
 migrate();
@@ -82,7 +82,10 @@ const server = http.createServer((req, res) => {
 });
 
 server.on('clientError', (err, socket) => {
-  if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+  if (socket.destroyed || !socket.writable) return;
+  const reply = clientErrorReply(err);
+  if (reply) socket.end(reply);
+  else socket.destroy();
 });
 
 server.listen(config.port, config.host, () => {

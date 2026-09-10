@@ -62,6 +62,24 @@ export function serializeCookie(name, value, opts = {}) {
 }
 
 /**
+ * Decides what (if anything) to say when node:http reports a client error.
+ *
+ * A proxy or tunnel holds keep-alive connections open, and when one goes idle
+ * past the request timeout it lands here with no request in flight. Answering
+ * that with a response makes the client log an "unsolicited response" and can
+ * poison connection reuse, so timeouts and resets are closed in silence and
+ * only genuine protocol errors get a reply.
+ */
+export function clientErrorReply(err) {
+  const quiet = ['ECONNRESET', 'ERR_HTTP_REQUEST_TIMEOUT', 'ERR_HTTP_HEADERS_TIMEOUT'];
+  if (quiet.includes(err?.code)) return null;
+  const status = err?.code === 'HPE_HEADER_OVERFLOW'
+    ? '431 Request Header Fields Too Large'
+    : '400 Bad Request';
+  return `HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`;
+}
+
+/**
  * Routes are declared as `['GET', '/api/books/:id', handler]`. Matching is a
  * plain segment walk — no regex compilation, no dependency, no surprises.
  */

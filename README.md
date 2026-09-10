@@ -205,6 +205,16 @@ It prints a throwaway `https://<random>.trycloudflare.com` URL, which is enough 
 install and offline downloads work. The URL changes on every run and is public while it lives, so
 it suits testing better than daily use.
 
+Its log is noisy by design. `Failed to refresh DNS local resolver` repeating every five minutes
+means the network is blocking cloudflared's own DNS lookups; the tunnel keeps working through it.
+What matters is `Registered tunnel connection`. If you also see `failed to accept QUIC stream:
+timeout` and the connection keeps re-registering, the network is unfriendly to UDP - add
+`--protocol http2` to fall back to TCP:
+
+```powershell
+cloudflared tunnel --url http://localhost:8080 --protocol http2
+```
+
 And if you only ever listen at home, none of this is required: a phone on the same Wi-Fi can open
 `http://<pc-address>:8080` directly. You lose the PWA install and offline downloads (both need
 HTTPS), nothing else. Should Windows Firewall block it:
