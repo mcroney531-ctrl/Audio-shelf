@@ -92,17 +92,35 @@ $lines = foreach ($key in $settings.Keys) { "$key=$($settings[$key])" }
 
 # --- go ---------------------------------------------------------------------
 $port = $settings['AUDIOSHELF_PORT']
-$lan = $null
-if (Get-Command Get-NetIPAddress -ErrorAction SilentlyContinue) {
-  $lan = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-    Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
-    Select-Object -First 1 -ExpandProperty IPAddress)
+
+# List every address the server can be reached on, named by its adapter. Taking
+# the first one silently was misleading: a virtual adapter or an ISP's
+# carrier-grade NAT address looks exactly like a LAN address from here.
+$addresses = @()
+if (Get-Command Get-NetIPConfiguration -ErrorAction SilentlyContinue) {
+  try {
+    $addresses = @(Get-NetIPConfiguration -ErrorAction SilentlyContinue |
+      Where-Object { $_.IPv4Address -and $_.NetAdapter -and $_.NetAdapter.Status -eq 'Up' } |
+      ForEach-Object {
+        [pscustomobject]@{
+          IP    = $_.IPv4Address.IPv4Address
+          Alias = $_.InterfaceAlias
+        }
+      } |
+      Where-Object { $_.IP -and $_.IP -notlike '127.*' -and $_.IP -notlike '169.254.*' })
+  } catch {
+    $addresses = @()
+  }
 }
 
 Write-Step 'Starting AudioShelf'
 Write-Note "library : $($settings['AUDIOSHELF_LIBRARY'])"
 Write-Host "`n  On this PC : http://localhost:$port" -ForegroundColor Yellow
-if ($lan) { Write-Host "  On the LAN : http://${lan}:$port" -ForegroundColor Yellow }
+foreach ($entry in $addresses) {
+  $label = $entry.Alias
+  if ($label -like '*Tailscale*') { $label = 'Tailscale' }
+  Write-Host ("  {0,-11}: http://{1}:{2}" -f $label, $entry.IP, $port) -ForegroundColor Yellow
+}
 Write-Note 'The first account you create is the administrator.'
 Write-Note 'Installing to a phone home screen needs HTTPS - see the README.'
 Write-Host "`n  Ctrl+C to stop.`n" -ForegroundColor DarkGray
