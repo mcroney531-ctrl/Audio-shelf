@@ -1,6 +1,7 @@
 import { db } from './db.js';
 import { config } from './config.js';
 import { scanLibrary, scanState } from './scanner.js';
+import { watchState } from './watcher.js';
 import {
   checkTools, listImports, runImport, importState, ensureChecksum,
   normalizeActivationBytes, setSetting, storedActivationBytes, ACTIVATION_KEY, readVoucher,
@@ -250,6 +251,7 @@ const routes = [
     requireAdmin(ctx);
     send(ctx.res, 200, {
       scan: scanState,
+      watch: watchState,
       library: {
         path: config.libraryDir,
         books: db.prepare('SELECT COUNT(*) AS n FROM books').get().n,

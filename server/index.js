@@ -4,6 +4,7 @@ import { migrate, db } from './db.js';
 import { matchApi } from './api.js';
 import { serveStatic, streamTrack, sendCover } from './files.js';
 import { scanLibrary, scanState } from './scanner.js';
+import { watchLibrary } from './watcher.js';
 import {
   COOKIE, userForToken, requireUser, pruneSessions, userCount,
 } from './auth.js';
@@ -78,6 +79,7 @@ server.listen(config.port, config.host, () => {
   console.log(`  data    : ${config.dataDir}`);
   if (userCount() === 0) console.log('  no users yet — open the app to create the first account');
   if (config.scanOnStart) scanLibrary().then(report);
+  if (config.watch) watcher = watchLibrary();
   if (config.scanIntervalMin > 0) {
     setInterval(() => scanLibrary().then(report), config.scanIntervalMin * 60_000).unref();
   }
@@ -88,7 +90,10 @@ function report() {
   else console.log(`[scan] ${scanState.found} books · +${scanState.added} added · ~${scanState.updated} updated · -${scanState.removed} removed`);
 }
 
+let watcher = null;
+
 const shutdown = () => {
+  watcher?.close();
   server.close(() => {
     try { db.close(); } catch { /* already closed */ }
     process.exit(0);

@@ -496,7 +496,10 @@ async function adminSection(ctx) {
       h('div.settingrow',
         h('div',
           h('div.settingrow__label', 'Library folder'),
-          h('div.settingrow__hint', h('code', data.library.path))),
+          h('div.settingrow__hint', h('code', data.library.path)),
+          h('div.settingrow__hint', data.watch?.active
+            ? 'Watching for new files — books added to this folder appear on their own.'
+            : 'Not watching; use Scan now after adding books.')),
         h('div.chips',
           h('button.btn', {
             disabled: scanning,

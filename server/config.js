@@ -76,6 +76,10 @@ export const config = {
   // PORT is what Render, Railway, Heroku and friends inject.
   port: num(env.AUDIOSHELF_PORT || env.PORT, 8080),
   scanOnStart: bool(env.AUDIOSHELF_SCAN_ON_START, true),
+  // Watch the library folders and rescan when files appear, so books added in
+  // Explorer show up without anyone pressing Scan.
+  watch: bool(env.AUDIOSHELF_WATCH, true),
+  watchDelaySec: num(env.AUDIOSHELF_WATCH_DELAY_SEC, 15),
   scanIntervalMin: num(env.AUDIOSHELF_SCAN_INTERVAL_MIN, 0),
   sessionTtlDays: num(env.AUDIOSHELF_SESSION_DAYS, 30),
   trustProxy: bool(env.AUDIOSHELF_TRUST_PROXY, false),

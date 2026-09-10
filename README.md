@@ -19,6 +19,7 @@ a player that remembers your position across every device you sign in on.
 - Reads title, author, narrator, series, year, genre, description and cover art from tags
 - Chapters from embedded `m4b` chapter markers, or one chapter per file for multi-file books
 - Incremental re-scans: unchanged books are fingerprinted and skipped
+- Watches the library folder, so books you drop in appear on the shelf by themselves
 - Search and filter by title/author/narrator/series, in progress, finished, unstarted
 
 **Player**
@@ -105,8 +106,24 @@ winget install Gyan.FFmpeg
 
 Open a new terminal afterwards so it is on `PATH`.
 
-To keep it running after you close the window, use Task Scheduler: a task that runs at logon, action
-`powershell.exe`, arguments `-WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\path\to\AudioShelf\start.ps1"`.
+#### Day-to-day use
+
+You set the library folder once. After that PowerShell is not part of the routine:
+
+- **Adding books** — copy them into your library folder in Explorer. AudioShelf watches that folder
+  and rescans a few seconds after the copy finishes; the book appears on the shelf on its own. The
+  Imports page does the same for `.aax`/`.aaxc` files.
+- **Starting it** — run it at logon with no terminal window:
+
+  ```powershell
+  .\scripts\install-task.ps1          # registers a scheduled task and starts it
+  .\scripts\install-task.ps1 -Remove  # undo
+  ```
+
+  After that the server is simply always there at `http://localhost:8080`; bookmark it.
+- **Changing the port** — put `AUDIOSHELF_PORT=9000` in `.env` and restart. 8080 is only a default.
+- **Changing the library folder** — edit `AUDIOSHELF_LIBRARY` in `.env`, or run
+  `.\start.ps1 -Library "E:\Books"` once.
 
 ### Docker
 
@@ -308,6 +325,8 @@ root instead (copy `.env.example` to `.env` and edit). Real environment variable
 | `AUDIOSHELF_HOST` / `AUDIOSHELF_PORT` | `0.0.0.0` / `8080` | Listen address |
 | `AUDIOSHELF_SCAN_ON_START` | `1` | Scan when the server boots |
 | `AUDIOSHELF_SCAN_INTERVAL_MIN` | `0` | Re-scan every N minutes (0 = never) |
+| `AUDIOSHELF_WATCH` | `1` | Watch the library folder and rescan when it changes |
+| `AUDIOSHELF_WATCH_DELAY_SEC` | `15` | Quiet period after the last change before rescanning |
 | `AUDIOSHELF_SESSION_DAYS` | `30` | Session lifetime |
 | `AUDIOSHELF_TRUST_PROXY` | `0` | Read `X-Forwarded-Proto` for the Secure cookie flag |
 | `AUDIOSHELF_SECRET` | generated | Session signing key; kept in `data/secret` if unset |
