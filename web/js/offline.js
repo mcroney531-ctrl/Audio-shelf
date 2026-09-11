@@ -13,6 +13,45 @@ const writeIndex = (value) => {
 export const downloadIndex = () => readIndex();
 export const isDownloaded = (bookId) => Boolean(readIndex()[bookId]);
 
+/**
+ * The index in localStorage is a claim, not proof: the browser can evict the
+ * media cache under storage pressure, and a download that never finished leaves
+ * an entry behind. Ask Cache Storage what is really there.
+ */
+export async function verifyDownload(bookId) {
+  const entry = readIndex()[bookId];
+  if (!entry) return { known: false, ok: false, present: 0, total: 0, missing: [] };
+  if (!('caches' in window)) return { known: true, ok: false, present: 0, total: entry.urls.length, missing: entry.urls };
+
+  const cache = await caches.open(MEDIA_CACHE);
+  const missing = [];
+  for (const url of entry.urls) {
+    if (!(await cache.match(url))) missing.push(url);
+  }
+  return {
+    known: true,
+    ok: missing.length === 0,
+    present: entry.urls.length - missing.length,
+    total: entry.urls.length,
+    missing,
+  };
+}
+
+/** Drops index entries whose files are gone, so the UI stops lying about them. */
+export async function pruneMissingDownloads() {
+  const index = readIndex();
+  let changed = false;
+  for (const id of Object.keys(index)) {
+    const state = await verifyDownload(id);
+    if (!state.ok && state.present === 0) {
+      delete index[id];
+      changed = true;
+    }
+  }
+  if (changed) writeIndex(index);
+  return changed;
+}
+
 export async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return null;
   try {

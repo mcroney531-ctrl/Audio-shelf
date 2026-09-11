@@ -4,6 +4,7 @@ import { Player, lastBookId } from './player.js';
 import { createPlayerUI } from './playerui.js';
 import { registerServiceWorker } from './offline.js';
 import { canPrompt, promptInstall, isStandalone } from './install.js';
+import { verifyDownload } from './offline.js';
 import { homeView, libraryView, bookView, downloadsView, settingsView, importsView } from './views.js';
 
 const THEME_KEY = 'audioshelf.theme';
@@ -196,12 +197,18 @@ async function start() {
       location.reload();
     },
     playBook: async (bookOrId, options = {}) => {
+      const id = typeof bookOrId === 'object' ? bookOrId.id : bookOrId;
       try {
-        const id = typeof bookOrId === 'object' ? bookOrId.id : bookOrId;
         const detail = typeof bookOrId === 'object' && bookOrId.tracks ? bookOrId : await api.book(id);
         await player.open(detail, options);
         ui.open();
       } catch (err) {
+        // Offline, the useful question is whether this book was ever downloaded.
+        if (!navigator.onLine) {
+          const state = await verifyDownload(id).catch(() => null);
+          if (!state?.known) return toast('Offline, and this book was never downloaded', 'bad');
+          if (!state.ok) return toast(`Offline, and ${state.total - state.present} of ${state.total} files are missing — download it again`, 'bad');
+        }
         toast(err.message || 'Could not start that book', 'bad');
       }
     },

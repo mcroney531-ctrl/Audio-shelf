@@ -1,6 +1,6 @@
 import { h, icon, mount, clear, humanDuration, clockTime, relativeTime, toast } from './dom.js';
 import { api, coverUrl } from './api.js';
-import { downloadBook, removeDownload, isDownloaded, downloadIndex, storageUsage, formatBytes, clearAllDownloads, requestPersistence } from './offline.js';
+import { downloadBook, removeDownload, isDownloaded, downloadIndex, storageUsage, formatBytes, clearAllDownloads, requestPersistence, verifyDownload } from './offline.js';
 import { runInstallChecks, promptInstall, canPrompt, isStandalone, installReport } from './install.js';
 import { uploadFile } from './api.js';
 
@@ -215,7 +215,8 @@ export async function bookView(ctx) {
 
   const downloadBtn = h('button.btn', {
     onclick: async () => {
-      if (isDownloaded(book.id)) {
+      const state = await verifyDownload(book.id);
+      if (state.known && state.ok) {
         await removeDownload(book.id);
         toast('Download removed');
       } else {
@@ -237,10 +238,19 @@ export async function bookView(ctx) {
     },
   });
 
-  function renderDownloadButton() {
-    const saved = isDownloaded(book.id);
-    mount(downloadBtn, icon(saved ? 'check' : 'download'), saved ? 'Downloaded' : 'Download', downloadState);
-    downloadBtn.classList.toggle('btn--ghost', saved);
+  async function renderDownloadButton() {
+    const state = await verifyDownload(book.id);
+    if (state.known && state.ok) {
+      mount(downloadBtn, icon('check'), 'Downloaded', downloadState);
+      downloadBtn.classList.add('btn--ghost');
+    } else if (state.known) {
+      // Claimed but not actually in the cache - say so instead of pretending.
+      mount(downloadBtn, icon('download'), `Re-download (${state.present}/${state.total} files)`, downloadState);
+      downloadBtn.classList.remove('btn--ghost');
+    } else {
+      mount(downloadBtn, icon('download'), 'Download', downloadState);
+      downloadBtn.classList.remove('btn--ghost');
+    }
   }
   renderDownloadButton();
 
@@ -333,14 +343,21 @@ export async function downloadsView(ctx) {
       ? `${entries.length} book${entries.length === 1 ? '' : 's'} · ${formatBytes(usage.bytes)} of ${formatBytes(usage.quota.quota)} available`
       : `${entries.length} book${entries.length === 1 ? '' : 's'} · ${formatBytes(usage.bytes)}`;
 
-    mount(list, entries.length ? entries.map((entry) => h('div.list__row',
-      h('span.list__num', icon('check', 16)),
-      h('a.list__name', { href: `#/book/${entry.id}` }, entry.title, ' — ', entry.author || 'Unknown'),
-      h('span.list__time', formatBytes(entry.bytes)),
-      h('button.iconbtn', {
-        title: 'Remove download',
-        onclick: async () => { await removeDownload(entry.id); render(); toast('Download removed'); },
-      }, icon('trash', 16))))
+    const states = await Promise.all(entries.map((entry) => verifyDownload(entry.id)));
+    mount(list, entries.length ? entries.map((entry, index) => {
+      const state = states[index];
+      return h('div.list__row',
+        h('span.list__num', { style: { color: state.ok ? 'var(--sage)' : 'var(--rust)' } },
+          icon(state.ok ? 'check' : 'x', 16)),
+        h('a.list__name', { href: `#/book/${entry.id}` }, entry.title, ' — ', entry.author || 'Unknown'),
+        h('span.list__time', state.ok
+          ? formatBytes(entry.bytes)
+          : `${state.present}/${state.total} files — open it and download again`),
+        h('button.iconbtn', {
+          title: 'Remove download',
+          onclick: async () => { await removeDownload(entry.id); render(); toast('Download removed'); },
+        }, icon('trash', 16)));
+    })
       : emptyState('Nothing saved offline',
         h('p', 'Open a book and hit Download to keep it on this device — handy for flights and the subway.')));
   }

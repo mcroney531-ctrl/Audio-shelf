@@ -44,7 +44,13 @@ export class Player extends EventTarget {
       this.emit('tick');
     });
     audio.addEventListener('error', () => {
-      if (this.book) this.emit('error', { message: 'That file would not play. Is the library still mounted?' });
+      if (!this.book) return;
+      const where = this.track ? ` (${this.track.title})` : '';
+      this.emit('error', {
+        message: navigator.onLine
+          ? `That file would not play${where}. Is the library still mounted?`
+          : `Not available offline${where} — download the book while connected`,
+      });
     });
     audio.addEventListener('ratechange', () => this.emit('state'));
 
@@ -119,7 +125,17 @@ export class Player extends EventTarget {
     try {
       await this.audio.play();
     } catch (err) {
-      if (err.name !== 'AbortError') this.emit('error', { message: 'Tap play to start audio' });
+      // AbortError just means another load superseded this one.
+      if (err.name === 'AbortError') return;
+      if (err.name === 'NotAllowedError') {
+        return this.emit('error', { message: 'The browser blocked autoplay - press play' });
+      }
+      const where = this.track ? ` (${this.track.title})` : '';
+      this.emit('error', {
+        message: navigator.onLine
+          ? `Could not play this file${where}`
+          : `Not available offline${where} - download the book while connected`,
+      });
     }
   }
 
