@@ -141,6 +141,42 @@ const MIGRATIONS = [
   );
   CREATE INDEX api_tokens_user ON api_tokens(user_id);
   `,
+
+  // 4 — text-to-speech generations, and a tally of the characters they spend
+  `
+  CREATE TABLE generations (
+    id            INTEGER PRIMARY KEY,
+    title         TEXT NOT NULL,
+    author        TEXT,
+    provider      TEXT NOT NULL DEFAULT 'google',
+    voice         TEXT NOT NULL,
+    speaking_rate REAL NOT NULL DEFAULT 1,
+    source_text   TEXT NOT NULL,                    -- cleaned; a retry re-chunks from this
+    text_hash     TEXT NOT NULL,
+    characters    INTEGER NOT NULL DEFAULT 0,       -- what the provider will be asked to bill
+    chunk_count   INTEGER NOT NULL DEFAULT 0,
+    chunks_done   INTEGER NOT NULL DEFAULT 0,
+    chapters      TEXT,                             -- JSON: [{ title, chunks }]
+    status        TEXT NOT NULL DEFAULT 'pending',  -- pending | running | done | failed | cancelled
+    progress      REAL NOT NULL DEFAULT 0,
+    error         TEXT,
+    output        TEXT,
+    created_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL
+  );
+  CREATE INDEX generations_recent ON generations(created_at DESC);
+
+  -- Characters spent per month per billing bucket, so the UI can say how much
+  -- of a free tier is left. This server's own tally, not the provider's.
+  CREATE TABLE usage_counters (
+    month      TEXT NOT NULL,                       -- YYYY-MM, UTC
+    provider   TEXT NOT NULL,
+    tier       TEXT NOT NULL,
+    characters INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (month, provider, tier)
+  );
+  `,
 ];
 
 const version = () => db.prepare('PRAGMA user_version').get().user_version;

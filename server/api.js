@@ -15,6 +15,11 @@ import {
   createToken, listTokens, revokeToken,
 } from './auth.js';
 import { uploadTarget } from './upload.js';
+import {
+  ttsState, estimate, listVoices, credentialSummary, saveApiKey, saveServiceAccount,
+  clearCredentials, createGeneration, runGeneration, listGenerations, getGeneration,
+  deleteGeneration, cancelGeneration, monthlyUsage, PRICING, DEFAULT_VOICE,
+} from './tts.js';
 
 const num = (value, fallback = 0) => {
   if (value === null || value === undefined || value === '') return fallback;
@@ -355,6 +360,95 @@ const routes = [
     requireAdmin(ctx);
     const info = db.prepare('DELETE FROM imports WHERE id = ?').run(num(ctx.params.id, -1));
     if (!info.changes) throw notFound('No such import');
+    send(ctx.res, 200, { ok: true });
+  }],
+
+  // --- Text to speech -----------------------------------------------------
+  ['GET', '/api/admin/tts', (ctx) => {
+    requireAdmin(ctx);
+    send(ctx.res, 200, {
+      credentials: credentialSummary(),
+      defaultVoice: DEFAULT_VOICE,
+      pricing: PRICING,
+      usage: monthlyUsage(),
+      generations: listGenerations(),
+      state: ttsState,
+      outputDir: config.generatedDir,
+      maxCharacters: config.ttsMaxCharacters,
+    });
+  }],
+
+  ['POST', '/api/admin/tts/credentials', async (ctx) => {
+    requireAdmin(ctx);
+    const body = await readJson(ctx.req);
+    if (body.clear) {
+      clearCredentials();
+      return send(ctx.res, 200, { ok: true, credentials: null });
+    }
+    if (body.serviceAccount) saveServiceAccount(body.serviceAccount);
+    else saveApiKey(body.apiKey);
+    send(ctx.res, 200, { ok: true, credentials: credentialSummary() });
+  }],
+
+  ['GET', '/api/admin/tts/voices', async (ctx) => {
+    requireAdmin(ctx);
+    const language = ctx.url.searchParams.get('language') || 'en-US';
+    send(ctx.res, 200, { voices: await listVoices(language) });
+  }],
+
+  // Costed before anything is spent: this is what puts a character count and a
+  // price on the button the admin is about to press.
+  ['POST', '/api/admin/tts/estimate', async (ctx) => {
+    requireAdmin(ctx);
+    const body = await readJson(ctx.req, 12_000_000);
+    send(ctx.res, 200, estimate({ text: body.text, voice: body.voice || DEFAULT_VOICE }));
+  }],
+
+  ['POST', '/api/admin/tts/generate', async (ctx) => {
+    const user = requireAdmin(ctx);
+    const body = await readJson(ctx.req, 12_000_000);
+    if (ttsState.running) throw new HttpError(409, 'Another generation is already running');
+    // Checked here, not inside the job: the job runs after this response has
+    // gone out, so a missing key would otherwise fail where nobody is looking.
+    if (!credentialSummary()) throw badRequest('No Google API key saved yet - add one above first.');
+    const id = createGeneration({
+      title: body.title,
+      author: body.author,
+      text: body.text,
+      voice: body.voice || DEFAULT_VOICE,
+      speakingRate: num(body.speakingRate, 1),
+      userId: user.id,
+    });
+    // Generate in the background; the row and ttsState carry progress and errors.
+    runGeneration(id)
+      .then(() => scanLibrary())
+      .catch((err) => console.warn(`[tts] ${err.message}`));
+    send(ctx.res, 202, { started: true, id, generation: getGeneration(id), state: ttsState });
+  }],
+
+  ['POST', '/api/admin/tts/:id/retry', (ctx) => {
+    requireAdmin(ctx);
+    const id = num(ctx.params.id, -1);
+    if (!getGeneration(id)) throw notFound('No such generation');
+    if (ttsState.running) throw new HttpError(409, 'Another generation is already running');
+    if (!credentialSummary()) throw badRequest('No Google API key saved yet - add one above first.');
+    // Chunks already paid for are on disk and get reused, so a retry is free
+    // for everything that succeeded first time round.
+    runGeneration(id)
+      .then(() => scanLibrary())
+      .catch((err) => console.warn(`[tts] ${err.message}`));
+    send(ctx.res, 202, { started: true, state: ttsState });
+  }],
+
+  ['POST', '/api/admin/tts/:id/cancel', (ctx) => {
+    requireAdmin(ctx);
+    cancelGeneration(num(ctx.params.id, -1));
+    send(ctx.res, 200, { ok: true });
+  }],
+
+  ['DELETE', '/api/admin/tts/:id', async (ctx) => {
+    requireAdmin(ctx);
+    await deleteGeneration(num(ctx.params.id, -1));
     send(ctx.res, 200, { ok: true });
   }],
 

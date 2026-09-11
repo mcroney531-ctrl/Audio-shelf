@@ -5,7 +5,7 @@ import { createPlayerUI } from './playerui.js';
 import { registerServiceWorker } from './offline.js';
 import { canPrompt, promptInstall, isStandalone } from './install.js';
 import { verifyDownload } from './offline.js';
-import { homeView, libraryView, bookView, downloadsView, settingsView, importsView } from './views.js';
+import { homeView, libraryView, bookView, downloadsView, settingsView, importsView, generateView } from './views.js';
 
 const THEME_KEY = 'audioshelf.theme';
 const app = document.getElementById('app');
@@ -27,6 +27,7 @@ const NAV = [
   ['#/listening', 'headphones', 'Listening'],
   ['#/downloads', 'download', 'Downloads', { short: 'Saved' }],
   ['#/imports', 'key', 'Add books', { admin: true, short: 'Add' }],
+  ['#/generate', 'wand', 'Generate', { admin: true, short: 'Make' }],
   ['#/settings', 'settings', 'Settings', { short: 'Settings' }],
 ];
 
@@ -37,6 +38,7 @@ const ROUTES = [
   [/^\/book\/(?<id>\d+)$/, bookView],
   [/^\/downloads$/, downloadsView],
   [/^\/imports$/, importsView],
+  [/^\/generate$/, generateView],
   [/^\/settings$/, settingsView],
 ];
 

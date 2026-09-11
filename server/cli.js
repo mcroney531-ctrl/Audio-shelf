@@ -9,6 +9,10 @@ import {
   checkTools, listImports, runImport, noteImport, readVoucher, normalizeActivationBytes,
   setSetting, storedActivationBytes, ACTIVATION_KEY, ensureChecksum,
 } from './audible.js';
+import {
+  estimate, listVoices, saveApiKey, saveServiceAccount, clearCredentials, credentialSummary,
+  createGeneration, runGeneration, listGenerations, monthlyUsage, PRICING, DEFAULT_VOICE, ttsState,
+} from './tts.js';
 
 migrate();
 
@@ -178,6 +182,131 @@ const commands = {
     }
     const checksum = await ensureChecksum(id);
     console.log(checksum || 'No checksum available for that file.');
+  },
+
+  /** Store (or clear) the Google credentials used for generating speech. */
+  async 'tts:key'() {
+    if (args.includes('--clear')) {
+      clearCredentials();
+      console.log('Google credentials cleared.');
+      return;
+    }
+    const file = flag('service-account');
+    if (file) {
+      saveServiceAccount(await fs.readFile(path.resolve(file), 'utf8'));
+      console.log(`Service account saved (${credentialSummary().hint}).`);
+      return;
+    }
+    const value = flag('set');
+    if (!value) {
+      const stored = credentialSummary();
+      console.log(stored ? `${stored.kind}: ${stored.hint}` : 'No Google credentials stored.');
+      console.log('usage: npm run cli -- tts:key --set=AIza... | --service-account=key.json | --clear');
+      return;
+    }
+    saveApiKey(value);
+    console.log('API key saved.');
+  },
+
+  async 'tts:voices'() {
+    const voices = await listVoices(flag('language') || 'en-US');
+    for (const entry of voices) {
+      console.log(`${entry.name.padEnd(30)} ${String(entry.gender || '').toLowerCase().padEnd(8)} ${entry.tier}`);
+    }
+    console.log(`\n${voices.length} voices. Cost per tier:`);
+    for (const [tier, rates] of Object.entries(PRICING)) {
+      if (tier === 'other') continue;
+      console.log(`  ${tier.padEnd(18)} ${rates.freePerMonth.toLocaleString().padStart(9)} free/month, then $${rates.perMillion}/million`);
+    }
+  },
+
+  /** Read a text file aloud into the generated library. --dry-run costs nothing. */
+  async tts() {
+    const file = flag('file');
+    if (!file) {
+      console.error('usage: npm run cli -- tts --file=notes.txt --title="My Book" [--author=Name] [--voice=en-US-Chirp3-HD-Charon] [--rate=1] [--dry-run]');
+      process.exitCode = 1;
+      return;
+    }
+    const text = await fs.readFile(path.resolve(file), 'utf8');
+    const voice = flag('voice') || DEFAULT_VOICE;
+    const guess = await estimate({ text, voice });
+
+    console.log(`${guess.characters.toLocaleString()} characters, ${guess.words.toLocaleString()} words, ${guess.chapters.length} chapters`);
+    console.log(`about ${Math.round(guess.estimatedSeconds / 60)} minutes of audio in ${guess.chunks} pieces`);
+    console.log(`${guess.tierLabel}: ${guess.freeRemaining.toLocaleString()} free characters left this month`);
+    console.log(guess.cost > 0 ? `estimated cost: $${guess.cost.toFixed(4)}` : 'estimated cost: nothing - inside the free tier');
+
+    if (args.includes('--dry-run')) {
+      for (const chapter of guess.chapters) {
+        console.log(`  ${String(chapter.index).padStart(3)}. ${chapter.title}  (${chapter.characters.toLocaleString()} chars)`);
+      }
+      return;
+    }
+
+    const id = createGeneration({
+      title: flag('title') || path.basename(file, path.extname(file)),
+      author: flag('author') || '',
+      text,
+      voice,
+      speakingRate: Number(flag('rate')) || 1,
+    });
+    // A long text is a lot of quiet minutes; say which piece it is on.
+    const ticker = setInterval(() => {
+      if (ttsState.running) process.stdout.write(`\rGenerating piece ${ttsState.chunk} of ${ttsState.chunks} `);
+    }, 500);
+    try {
+      const result = await runGeneration(id);
+      clearInterval(ticker);
+      console.log(`\ndone -> ${result.path} (${result.chapters} chapters)`);
+    } catch (err) {
+      clearInterval(ticker);
+      console.log('\nfailed');
+      console.error(`  ${err.message}`);
+      console.error('  Pieces already generated are kept; run tts:resume to pick up where it stopped.');
+      process.exitCode = 1;
+      return;
+    }
+    await scanLibrary();
+    console.log(`Library now holds ${db.prepare('SELECT COUNT(*) AS n FROM books').get().n} books.`);
+  },
+
+  async 'tts:resume'() {
+    const id = Number(flag('id'));
+    if (!Number.isFinite(id)) {
+      console.error('usage: npm run cli -- tts:resume --id=3   (ids come from tts:list)');
+      process.exitCode = 1;
+      return;
+    }
+    const result = await runGeneration(id);
+    console.log(`done -> ${result.path}`);
+    await scanLibrary();
+  },
+
+  'tts:list'() {
+    const rows = listGenerations();
+    if (!rows.length) {
+      console.log('Nothing generated yet.');
+      return;
+    }
+    for (const row of rows) {
+      const detail = row.status === 'done' ? row.output
+        : row.error ? `! ${row.error}`
+          : `${row.chunksDone}/${row.chunkCount} pieces`;
+      console.log(`${String(row.id).padStart(3)}  [${row.status.padEnd(9)}] ${row.title}  (${row.characters.toLocaleString()} chars, ${row.voice}) - ${detail}`);
+    }
+  },
+
+  'tts:usage'() {
+    const { month, used } = monthlyUsage();
+    console.log(`Characters spent in ${month} (this server's own count):`);
+    for (const [tier, rates] of Object.entries(PRICING)) {
+      if (tier === 'other') continue;
+      const spent = used[tier] || 0;
+      const over = Math.max(0, spent - rates.freePerMonth);
+      console.log(`  ${rates.label.padEnd(20)} ${spent.toLocaleString().padStart(10)} of ${rates.freePerMonth.toLocaleString()} free`
+        + (over ? `  -> $${((over / 1e6) * rates.perMillion).toFixed(2)}` : ''));
+    }
   },
 
   stats() {

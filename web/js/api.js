@@ -62,6 +62,16 @@ export const api = {
   setActivationBytes: (activationBytes) =>
     request('/api/admin/activation', { method: 'POST', body: { activationBytes } }),
   clearActivationBytes: () => request('/api/admin/activation', { method: 'POST', body: { clear: true } }),
+  tts: () => request('/api/admin/tts'),
+  ttsVoices: (language = 'en-US') => request(`/api/admin/tts/voices${query({ language })}`),
+  ttsEstimate: (text, voice) => request('/api/admin/tts/estimate', { method: 'POST', body: { text, voice } }),
+  ttsGenerate: (payload) => request('/api/admin/tts/generate', { method: 'POST', body: payload }),
+  ttsRetry: (id) => request(`/api/admin/tts/${id}/retry`, { method: 'POST' }),
+  ttsCancel: (id) => request(`/api/admin/tts/${id}/cancel`, { method: 'POST' }),
+  ttsForget: (id) => request(`/api/admin/tts/${id}`, { method: 'DELETE' }),
+  setTtsKey: (payload) => request('/api/admin/tts/credentials', { method: 'POST', body: payload }),
+  clearTtsKey: () => request('/api/admin/tts/credentials', { method: 'POST', body: { clear: true } }),
+
   scan: (force = false) => request('/api/admin/scan', { method: 'POST', body: { force } }),
   addUser: (payload) => request('/api/admin/users', { method: 'POST', body: payload }),
   deleteUser: (id) => request(`/api/admin/users/${id}`, { method: 'DELETE' }),

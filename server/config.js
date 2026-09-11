@@ -70,6 +70,18 @@ export const config = {
   // Converted Audible imports land here; the scanner treats it as a second
   // library root so the library folder itself can stay read-only.
   importsDir: path.resolve(root, env.AUDIOSHELF_IMPORTS || path.join(dataDir, 'imported')),
+  // Books generated from pasted text land here, a third library root for the
+  // same reason as the imports folder: the library itself may be read-only,
+  // and keeping generated books apart makes them easy to find and delete.
+  generatedDir: path.resolve(root, env.AUDIOSHELF_GENERATED || path.join(dataDir, 'generated')),
+  // Half-finished generations live here until every chunk exists; nothing in
+  // this folder is scanned, so a part-built book never reaches the shelf.
+  ttsWorkDir: path.resolve(root, env.AUDIOSHELF_TTS_WORK || path.join(dataDir, 'tts')),
+  // Google caps one synthesis request at 5,000 bytes; stay under it.
+  ttsChunkBytes: num(env.AUDIOSHELF_TTS_CHUNK_BYTES, 4000),
+  // A guard rail, not a technical limit: 2 million characters is a long novel,
+  // and pasting one by accident should not quietly spend an allowance.
+  ttsMaxCharacters: num(env.AUDIOSHELF_TTS_MAX_CHARS, 2_000_000),
   ffmpeg: env.AUDIOSHELF_FFMPEG || 'ffmpeg',
   ffprobe: env.AUDIOSHELF_FFPROBE || 'ffprobe',
   host: env.AUDIOSHELF_HOST || '0.0.0.0',
@@ -89,7 +101,8 @@ export const config = {
   secret: loadSecret(),
 };
 
-config.libraryRoots = [config.libraryDir, config.importsDir];
+config.libraryRoots = [config.libraryDir, config.importsDir, config.generatedDir];
 
 mkdirSync(config.coversDir, { recursive: true });
 mkdirSync(config.importsDir, { recursive: true });
+mkdirSync(config.generatedDir, { recursive: true });

@@ -11,6 +11,9 @@ npm test                     # integration tests: real server, temp library
 npm run cli -- scan          # rescan the library
 npm run cli -- user:list | user:add | user:password | stats
 npm run cli -- import:list | import --all | import:activation --set=1a2b3c4d
+npm run cli -- tts:key --set=AIza... | tts:voices | tts:usage
+npm run cli -- tts --file=notes.txt --title="X" --dry-run   # cost, spending nothing
+npm run cli -- tts --file=notes.txt --title="X"             # generate for real
 npm run seed:demo            # silent, tagged MP3s to click around in
 npm run icons                # regenerate the PWA icon set
 ```
@@ -31,6 +34,7 @@ server/     node:http + node:sqlite, no framework
   files.js    static serving and byte-range streaming
   upload.js   raw-body uploads, path sanitising
   audible.js  ffmpeg wrapper for .aax/.aaxc conversion
+  tts.js      text -> Google Cloud TTS -> chaptered MP3s in data/generated
   api.js      the JSON routes; index.js owns streaming and upload routes
 web/        no build step. ES modules, custom CSS, self-hosted fonts
   sw.js       app shell, API fallback, media cache with synthesised 206s
@@ -45,7 +49,11 @@ tests/      node:test against a spawned server on a throwaway library
   SQLite, env parsing and the HTTP server are all built into Node.
 - **Node 22.5+** for `node:sqlite`. `config.js` fails with a readable message
   below that, and it must stay the first import so the check runs early.
-- Audio is **never transcoded**. Files are streamed as they are.
+- Audio is **never transcoded**. Files are streamed as they are. Generated chapters are
+  joined with the concat demuxer and `-c copy`, which is assembly, not transcoding.
+- **Generated speech is the only thing that leaves the machine.** Nothing else here talks to a
+  third party. Keep it that way: the feature is off until a key is saved, and the key is stored
+  hashed-in-spirit (never echoed back to a browser in full).
 - Tests spawn a real server over a temp library. They are integration tests by
   choice — the interesting bugs here are in wiring, not in units.
 
@@ -73,6 +81,21 @@ Specific PowerShell traps already paid for:
 - After a `winget install`, PATH is stale in the open session. Refresh it from
   the registry (`[Environment]::GetEnvironmentVariable('PATH','Machine')`)
   rather than telling anyone to reopen their terminal.
+
+**A 202 hides a failure nobody sees.** `/api/admin/tts/generate` starts the job in the
+background and answers 202 immediately, so every check that can be made up front must be made
+up front. The missing-API-key check originally lived inside `runGeneration`, which meant
+pressing Generate with no key showed a spinner and then nothing at all. A test caught it;
+the browser would not have.
+
+**MP3s joined with `-c copy` inherit the first piece's duration header.** Without
+`-write_xing 1` a 24-chapter book reads as two seconds long and the shelf shows nonsense.
+`tests/tts.test.js` asserts the joined duration is the sum of the parts for exactly this reason.
+
+**Pasted text arrives with its furniture attached** — toolbars, a pencil, a close cross, "No
+chapters detected". Whether a line is furniture depends on its neighbours ("Read" above "Chat"
+is a toolbar; "Read" above a paragraph is a heading), so `cleanText` works in ordered stages
+rather than one filter. Every character of it would otherwise be read aloud and billed.
 
 **Windows profiles can disagree.** On the machine this was built for, the shell
 opens as one user while files live under another, so `$HOME`, `~` and
@@ -102,6 +125,8 @@ are the supported routes, plus plain Node behind a tunnel.
 - **No transcoding.** Convert once with ffmpeg instead of paying per stream.
 - **No key recovery for Audible files.** Imports decrypt with keys the user
   supplies from their own account. Never add key cracking or lookup.
-- **One library root** (plus the imports folder the scanner also walks).
+- **One library root** the user picks, plus two AudioShelf writes itself and also walks:
+  `data/imported` (Audible) and `data/generated` (text to speech).
+- **No key recovery, and no voice cloning.** Generation uses the provider's stock voices.
 - **Uploads are admin-only**, extension allow-listed, size capped, and written
   to `.part` first so the watcher never scans a half-copied file. Keep all four.

@@ -44,6 +44,16 @@ a player that remembers your position across every device you sign in on.
 - You supply the keys — your account activation bytes for `.aax`, the `.voucher` Audible's downloader
   writes next to each `.aaxc`. AudioShelf never contacts Audible and cannot derive keys for you.
 
+**Generate audio from text**
+- Paste text on the Generate page and it becomes a book on the shelf, chapters and all
+- Headings like `Chapter 4:`, `Introduction` and `Conclusion` become chapter marks you can skip between
+- Strips the furniture that comes with a copy-paste — toolbars, stray symbols, markdown — so
+  a voice is never paid to read `**` or `No chapters detected`
+- Shows the character count, the free tier you have left and the cost **before** you press the button
+- Uses Google Cloud Text-to-Speech, whose free tier (1M characters a month on the good voices,
+  4M on the plain ones) covers a personal shelf of articles and summaries without ever being billed
+- A generation that fails part way through resumes without re-buying the pieces it already has
+
 **Multi-user**
 - First account created is the administrator; admins add listeners and trigger scans
 - Each listener gets their own progress, bookmarks and finished shelf
@@ -373,6 +383,68 @@ is imported you can delete the `.aax` to reclaim the space.
 > Format-shifting works on books you bought. It does not strip anything from books you did not:
 > without your own account key, an `.aax` stays a locked file on disk.
 
+## Generating audio from text
+
+Paste text, get a book. Useful for the things that have no audio edition: articles, your own
+notes, a summary, a chapter someone sent you.
+
+### Setting up the key
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) and create a project
+   (a free Google account is enough; a card is required to enable billing, but the free tier
+   below is permanent and applies whether or not you ever spend anything).
+2. Enable **Cloud Text-to-Speech API** for that project.
+3. APIs & Services → Credentials → **Create credentials** → **API key**. Restrict it to the
+   Text-to-Speech API while you are there.
+4. Paste it into the Generate page in AudioShelf, or:
+
+```bash
+npm run cli -- tts:key --set=AIza...
+```
+
+Organisations that block API keys can use a service account instead:
+
+```bash
+npm run cli -- tts:key --service-account=/path/to/key.json
+```
+
+The key is stored in AudioShelf's own database, sent only to Google, and never echoed back
+to a browser in full.
+
+### What it costs
+
+Google's published rates, and the free allowance that resets every month:
+
+| Voices | Free every month | After that |
+| --- | --- | --- |
+| Standard, WaveNet | 4,000,000 characters | $4 per million |
+| Neural2, Polyglot | 1,000,000 characters | $16 per million |
+| Chirp 3: HD (default) | 1,000,000 characters | $30 per million |
+| Studio | 1,000,000 characters | $160 per million |
+
+For scale: a 1,000-word summary is about 6,000 characters and seven minutes of audio, so the
+free Chirp 3 tier is roughly **160 of those a month**, or about 17 hours of narration. A
+full-length novel is around 500,000 characters — still inside the free tier, once a month.
+
+The Generate page shows the count, the allowance left and the price on the button before you
+press it, and the CLI has `--dry-run` for the same thing. Rates change; the table above was
+taken from Google's pricing page in September 2026, and `npm run cli -- tts:voices` prints
+what AudioShelf currently believes.
+
+### Chapters
+
+A line that starts with `Chapter`, `Part`, `Section`, `Introduction`, `Prologue`, `Conclusion`,
+`Appendix` and friends becomes a chapter — one file per chapter, so the player gets real
+chapter navigation and you can skip around. Text before the first heading keeps its own chapter
+rather than being dropped. Text with no headings at all becomes a single-chapter book.
+
+### If it fails half way
+
+Each piece of audio is written to `data/tts/<id>/` as it arrives and only assembled into a book
+once every piece exists, so a part-built book never reaches the shelf. If a run dies at piece 340
+of 400, **Resume** (or `npm run cli -- tts:resume --id=N`) picks up at 341 — the first 340 are
+already paid for and are reused.
+
 ## Installing as a real app
 
 On Android there are two very different outcomes that look the same at first: a **WebAPK**
@@ -431,7 +503,11 @@ root instead (copy `.env.example` to `.env` and edit). Real environment variable
 | `AUDIOSHELF_TRUST_PROXY` | `0` | Read `X-Forwarded-Proto` for the Secure cookie flag |
 | `AUDIOSHELF_SECRET` | generated | Session signing key; kept in `data/secret` if unset |
 | `AUDIOSHELF_IMPORTS` | `<data>/imported` | Where converted Audible books are written (scanned as a second library root) |
-| `AUDIOSHELF_FFMPEG` / `AUDIOSHELF_FFPROBE` | `ffmpeg` / `ffprobe` | Only needed for imports, if they are not on `PATH` |
+| `AUDIOSHELF_GENERATED` | `<data>/generated` | Where generated books are written (scanned as a third library root) |
+| `AUDIOSHELF_GOOGLE_TTS_KEY` | — | Google API key for generating speech; the Generate page stores one instead |
+| `AUDIOSHELF_TTS_VOICE` | `en-US-Chirp3-HD-Charon` | Default voice |
+| `AUDIOSHELF_TTS_MAX_CHARS` | `2000000` | Guard rail on a single paste |
+| `AUDIOSHELF_FFMPEG` / `AUDIOSHELF_FFPROBE` | `ffmpeg` / `ffprobe` | Needed for imports and for joining generated chapters, if not on `PATH` |
 
 ## Command line
 
@@ -444,6 +520,11 @@ npm run cli -- stats
 npm run cli -- import:list                                     # Audible files found and what they need
 npm run cli -- import --all                                    # convert every pending .aax/.aaxc
 npm run cli -- import:activation --set=1a2b3c4d
+npm run cli -- tts:key --set=AIza...                           # Google key for generating speech
+npm run cli -- tts:voices                                      # voices available, and what each tier costs
+npm run cli -- tts --file=notes.txt --title="My Notes" --dry-run   # what it would cost, spending nothing
+npm run cli -- tts --file=notes.txt --title="My Notes" --author="Me"
+npm run cli -- tts:list | tts:resume --id=3 | tts:usage
 npm test                                                       # integration tests
 npm run icons                                                  # regenerate PWA icons
 ```
@@ -489,7 +570,11 @@ tests/      integration tests against a real server on a temp library
   with ffmpeg instead of paying for it on every stream.
 - **No key recovery for Audible files.** Imports decrypt with keys you provide from your own
   account; AudioShelf never talks to Audible and cannot crack or look up a key.
-- **One library root.** Symlink extra folders into it if you keep books on several disks.
+- **One library root** you choose, plus the two AudioShelf writes itself (converted Audible
+  imports and generated books). Symlink extra folders in if you keep books on several disks.
+- **Generated speech is the one thing that leaves your machine.** Nothing else here talks to
+  anyone: the text you paste on the Generate page goes to Google because that is the only way
+  to get it read aloud. Save no key and the feature stays switched off.
 - **No metadata providers.** Titles come from your tags; fix them with a tagger and re-scan.
 
 ## Licence

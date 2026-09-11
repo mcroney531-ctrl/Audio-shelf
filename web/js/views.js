@@ -927,3 +927,323 @@ export async function importsView(ctx) {
   await render();
   return node;
 }
+
+// ---------------------------------------------------------------------------
+// Generate audio from text (admin)
+// ---------------------------------------------------------------------------
+const GEN_STATUS = {
+  pending: 'Queued',
+  running: 'Generating',
+  done: 'On the shelf',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+};
+
+/** Enough voices to fill the picker before a key is saved and the real list loads. */
+const FALLBACK_VOICES = [
+  'en-US-Chirp3-HD-Charon', 'en-US-Chirp3-HD-Kore', 'en-US-Chirp3-HD-Puck', 'en-US-Chirp3-HD-Aoede',
+  'en-US-Neural2-D', 'en-US-Neural2-F', 'en-US-Wavenet-D', 'en-US-Wavenet-F', 'en-US-Standard-C',
+].map((name) => ({ name, gender: null }));
+
+const countLabel = (n) => Number(n || 0).toLocaleString();
+
+const costLabel = (est) => (est.cost > 0
+  ? `about $${est.cost < 0.01 ? est.cost.toFixed(4) : est.cost.toFixed(2)}`
+  : 'free — inside this month’s allowance');
+
+export async function generateView(ctx) {
+  if (!ctx.user.isAdmin) {
+    return h('div.empty', h('h2', 'Administrators only'),
+      h('p', 'Generated books land on the shelf for everyone, and they spend a paid allowance, so this is an admin job.'));
+  }
+
+  const node = h('div');
+  const keyBox = h('div');
+  const usageBox = h('div');
+  const formBox = h('div');
+  const listBox = h('div.list');
+  let pollTimer = null;
+  let data = null;
+  let voices = FALLBACK_VOICES;
+
+  node.append(h('header.topbar',
+    h('div',
+      h('p.eyebrow', 'Text in, audiobook out'),
+      h('h1', 'Generate'))));
+  node.append(keyBox, usageBox, formBox, listBox);
+
+  // --- the form is built once so typing is never interrupted by a refresh ---
+  const title = h('input', { placeholder: 'Eat That Frog', autocomplete: 'off' });
+  const author = h('input', { placeholder: 'Brian Tracy', autocomplete: 'off' });
+  const voice = h('select');
+  const rate = h('select',
+    ...[['0.85', 'Slower'], ['1', 'Normal'], ['1.15', 'Brisk'], ['1.25', 'Fast']]
+      .map(([value, label]) => h('option', { value, selected: value === '1' }, label)));
+  const text = h('textarea', {
+    rows: 14,
+    placeholder: 'Paste your text here.\n\nLines that start with Chapter, Part, Introduction or Conclusion become chapters you can skip between.',
+    spellcheck: 'false',
+    style: { width: '100%', resize: 'vertical', minHeight: '220px' },
+  });
+  const summary = h('p.settingrow__hint', 'Paste some text to see what it will cost.');
+  const chapterPreview = h('div');
+  const submit = h('button.btn.btn--primary', { type: 'submit', disabled: true }, icon('play', 16), 'Generate');
+  const formError = h('p.formerror');
+
+  const setVoices = (list) => {
+    const chosen = voice.value;
+    mount(voice, ...list.map((entry) => h('option', {
+      value: entry.name,
+      selected: entry.name === (chosen || data?.defaultVoice),
+    }, entry.gender ? `${entry.name} · ${entry.gender.toLowerCase()}` : entry.name)));
+  };
+
+  // --- live estimate -------------------------------------------------------
+  let estimateTimer = null;
+  let lastEstimate = null;
+
+  async function refreshEstimate() {
+    const body = text.value.trim();
+    if (!body) {
+      lastEstimate = null;
+      summary.textContent = 'Paste some text to see what it will cost.';
+      summary.style.color = '';
+      clear(chapterPreview);
+      submit.disabled = true;
+      mount(submit, icon('play', 16), 'Generate');
+      return;
+    }
+    try {
+      const est = await api.ttsEstimate(body, voice.value);
+      lastEstimate = est;
+      summary.style.color = est.cost > 0 ? 'var(--amber)' : 'var(--sage)';
+      mount(summary,
+        `${countLabel(est.characters)} characters · ${countLabel(est.words)} words · `,
+        `${est.chapters.length} chapter${est.chapters.length === 1 ? '' : 's'} · `,
+        `about ${humanDuration(est.estimatedSeconds)} of audio · `,
+        h('strong', costLabel(est)));
+
+      mount(chapterPreview, est.chapters.length > 1
+        ? h('details', { style: { marginTop: '8px' } },
+          h('summary', { style: { cursor: 'pointer', color: 'var(--paper-dim)', fontSize: '.85rem' } },
+            `${est.chapters.length} chapters detected`),
+          h('ol', { style: { margin: '8px 0 0', paddingLeft: '22px', color: 'var(--paper-dim)', fontSize: '.85rem' } },
+            ...est.chapters.map((chapter) =>
+              h('li', `${chapter.title} — ${countLabel(chapter.characters)} characters`))))
+        : null);
+
+      submit.disabled = !!data?.state?.running;
+      mount(submit, icon('play', 16),
+        `Generate · ${countLabel(est.characters)} characters · ${est.cost > 0 ? `$${est.cost.toFixed(2)}` : 'free'}`);
+    } catch (err) {
+      summary.textContent = err.message;
+      summary.style.color = 'var(--rust)';
+      submit.disabled = true;
+    }
+  }
+
+  const scheduleEstimate = () => {
+    clearTimeout(estimateTimer);
+    estimateTimer = setTimeout(refreshEstimate, 450);
+  };
+  text.addEventListener('input', scheduleEstimate);
+  voice.addEventListener('change', refreshEstimate);
+  ctx.onLeave(() => { clearTimeout(estimateTimer); clearInterval(pollTimer); });
+
+  const form = h('form.form', {
+    onsubmit: async (event) => {
+      event.preventDefault();
+      formError.textContent = '';
+      if (!title.value.trim()) { formError.textContent = 'Give it a title — it is the name on the shelf.'; return; }
+      if (!lastEstimate) { formError.textContent = 'Nothing to read yet.'; return; }
+      submit.disabled = true;
+      try {
+        await api.ttsGenerate({
+          title: title.value.trim(),
+          author: author.value.trim(),
+          text: text.value,
+          voice: voice.value,
+          speakingRate: Number(rate.value) || 1,
+        });
+        toast('Generating — this runs in the background');
+        text.value = '';
+        title.value = '';
+        author.value = '';
+        await refreshEstimate();
+        render();
+      } catch (err) {
+        formError.textContent = err.message;
+        submit.disabled = false;
+      }
+    },
+  },
+    h('div.form--split',
+      h('label', 'Title', title),
+      h('label', 'Author', author)),
+    h('div.form--split',
+      h('label', 'Voice', voice),
+      h('label', 'Pace', rate)),
+    h('label', 'Text', text),
+    summary,
+    chapterPreview,
+    formError,
+    h('div', { style: { marginTop: '12px' } }, submit));
+
+  async function render() {
+    data = await api.tts();
+
+    // --- the key
+    if (!data.credentials) {
+      const input = h('input', {
+        placeholder: 'AIza…',
+        autocomplete: 'off',
+        spellcheck: 'false',
+        style: { fontFamily: 'ui-monospace, monospace' },
+      });
+      const error = h('p.formerror');
+      mount(keyBox, h('section.section',
+        sectionHead('Google API key'),
+        h('p.detail__blurb', { style: { marginBottom: '14px' } },
+          'Generating speech needs a Google Cloud key. Create a project at ',
+          h('code', 'console.cloud.google.com'), ', enable ',
+          h('strong', 'Cloud Text-to-Speech API'), ', then make an API key under APIs & Services → Credentials. ',
+          'Google gives every project 1 million free characters a month on the good voices, and 4 million on the plain ones — ',
+          'a shelf of articles and summaries never leaves the free tier. The key is stored on this server and sent only to Google.'),
+        h('form.form', {
+          style: { display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' },
+          onsubmit: async (event) => {
+            event.preventDefault();
+            error.textContent = '';
+            try {
+              await api.setTtsKey({ apiKey: input.value });
+              toast('Key saved');
+              render();
+            } catch (err) {
+              error.textContent = err.message;
+            }
+          },
+        },
+          h('label', { style: { flex: '1 1 260px' } }, 'API key', input),
+          h('button.btn', { type: 'submit' }, 'Save')),
+        error,
+        h('p.tag', { style: { marginTop: '10px' } },
+          'Organisations that block API keys can paste a service-account JSON instead — ',
+          h('code', 'npm run cli -- tts:key --service-account=key.json'))));
+    } else {
+      mount(keyBox, h('section.section', sectionHead('Google API key'), h('div.settingrow',
+        h('div',
+          h('div.settingrow__label', data.credentials.kind === 'api-key' ? 'API key saved' : 'Service account'),
+          h('div.settingrow__hint', data.credentials.hint)),
+        h('button.btn.btn--ghost', {
+          onclick: async () => { await api.clearTtsKey(); toast('Key removed'); render(); },
+        }, 'Remove'))));
+    }
+
+    // --- what is left of the free tier, per billing bucket
+    const tiers = Object.entries(data.pricing)
+      .filter(([tier]) => tier !== 'other')
+      .map(([tier, rates]) => {
+        const used = data.usage.used[tier] || 0;
+        const share = rates.freePerMonth ? Math.min(1, used / rates.freePerMonth) : 0;
+        return h('div', { style: { padding: '10px 0', borderBottom: '1px solid var(--line)' } },
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' } },
+            h('span.settingrow__label', rates.label),
+            h('span.settingrow__hint',
+              `${countLabel(used)} of ${countLabel(rates.freePerMonth)} free · then $${rates.perMillion} per million`)),
+          h('div.progressline', { style: { marginTop: '8px' } },
+            h('i', { style: { width: `${Math.round(share * 100)}%` } })));
+      });
+
+    mount(usageBox, h('section.section',
+      sectionHead(`Free tier used in ${data.usage.month}`),
+      ...tiers,
+      h('p.tag', { style: { marginTop: '10px' } },
+        'Counted by this server, not by Google — anything else on the same Google project spends from the same allowance without showing up here.')));
+
+    // --- the form (mounted once, then left alone)
+    if (!formBox.firstChild) {
+      mount(formBox, h('section.section', sectionHead('New book from text'), form));
+      setVoices(voices);
+      if (data.credentials) {
+        api.ttsVoices().then(({ voices: list }) => {
+          if (list?.length) { voices = list; setVoices(list); }
+        }).catch(() => { /* the fallback list is fine */ });
+      }
+    }
+    if (data.state.running) submit.disabled = true;
+    else if (lastEstimate) submit.disabled = false;
+
+    // --- past and running generations
+    if (!data.generations.length) {
+      mount(listBox, h('div.empty',
+        h('h2', 'Nothing generated yet'),
+        h('p', 'Paste an article, a summary or a chapter above. It lands on the shelf like any other book — downloadable, resumable, with chapter marks.'),
+        h('p.tag', `Generated books are written to ${data.outputDir}`)));
+    } else {
+      mount(listBox, ...data.generations.map((entry) => generationRow(entry, data)));
+    }
+
+    clearInterval(pollTimer);
+    if (data.state.running) {
+      pollTimer = setInterval(render, 1500);
+      ctx.onLeave(() => clearInterval(pollTimer));
+    }
+  }
+
+  function generationRow(entry, data) {
+    const busy = entry.status === 'running';
+    const live = busy && data.state.generationId === entry.id;
+
+    return h('div', { style: { padding: '14px 0', borderBottom: '1px solid var(--line)' } },
+      h('div', { style: { display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' } },
+        h('div', { style: { flex: '1 1 260px', minWidth: 0 } },
+          h('div.settingrow__label', entry.title),
+          h('div.settingrow__hint',
+            entry.author ? `${entry.author} · ` : '',
+            `${countLabel(entry.characters)} characters · ${entry.chapters.length} chapter${entry.chapters.length === 1 ? '' : 's'} · ${entry.voice}`)),
+        h('span.tag', {
+          style: {
+            color: entry.status === 'done' ? 'var(--sage)'
+              : entry.status === 'failed' ? 'var(--rust)'
+                : busy ? 'var(--amber)' : 'var(--paper-dim)',
+          },
+        }, GEN_STATUS[entry.status] || entry.status),
+
+        busy ? h('button.btn.btn--ghost', {
+          onclick: async () => {
+            try { await api.ttsCancel(entry.id); toast('Stopping after this piece'); render(); }
+            catch (err) { toast(err.message, 'bad'); }
+          },
+        }, 'Stop') : null,
+
+        entry.status === 'failed' || entry.status === 'cancelled' ? h('button.btn', {
+          disabled: data.state.running,
+          title: 'Pieces already generated are reused, so this only pays for what is missing',
+          onclick: async () => {
+            try { await api.ttsRetry(entry.id); toast('Picking up where it stopped'); render(); }
+            catch (err) { toast(err.message, 'bad'); }
+          },
+        }, icon('refresh', 16), 'Resume') : null,
+
+        !busy ? h('button.btn.btn--ghost', {
+          title: 'Forget this generation (the book stays on the shelf)',
+          onclick: async () => {
+            try { await api.ttsForget(entry.id); render(); }
+            catch (err) { toast(err.message, 'bad'); }
+          },
+        }, icon('trash', 16)) : null),
+
+      busy ? h('div', { style: { marginTop: '10px' } },
+        h('div.progressline', h('i', { style: { width: `${Math.round((entry.progress || 0) * 100)}%` } })),
+        h('p.settingrow__hint', { style: { marginTop: '6px' } },
+          live ? `piece ${data.state.chunk} of ${data.state.chunks}` : `${entry.chunksDone} of ${entry.chunkCount} pieces`)) : null,
+
+      entry.status === 'cancelled' ? h('p.settingrow__hint', { style: { marginTop: '8px' } },
+        `Stopped after ${entry.chunksDone} of ${entry.chunkCount} pieces. Resume costs only the rest.`) : null,
+      entry.error ? h('p.formerror', { style: { marginTop: '8px' } }, entry.error) : null,
+      entry.output ? h('p.settingrow__hint', { style: { marginTop: '8px' } }, `→ ${entry.output}`) : null);
+  }
+
+  await render();
+  return node;
+}
