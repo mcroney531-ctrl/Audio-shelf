@@ -2,6 +2,8 @@
 # runs with no visible terminal window. After this you never open PowerShell
 # for day-to-day use: add books in Explorer, open the app in a browser.
 #
+# Verified on Windows 10/11 with Windows PowerShell 5.1.
+#
 #   .\scripts\install-task.ps1            # install and start it now
 #   .\scripts\install-task.ps1 -Remove    # unregister it again
 [CmdletBinding()]
