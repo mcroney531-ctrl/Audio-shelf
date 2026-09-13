@@ -2,7 +2,7 @@
    and downloaded audio served straight from the cache — Range requests
    included, so seeking works with the network off. */
 
-const VERSION = 'v1';
+const VERSION = 'v2';  // bumped when the shell changes; v2 = new logo icon set
 const SHELL_CACHE = `audioshelf-shell-${VERSION}`;
 const API_CACHE = `audioshelf-api-${VERSION}`;
 const MEDIA_CACHE = 'audioshelf-media-v1'; // deliberately unversioned: user downloads survive updates

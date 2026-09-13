@@ -467,6 +467,12 @@ What matters, and what this repo already does:
   `"purpose": "any maskable"`, which can trip Chrome's WebAPK icon resolution and silently
   downgrade the install to a shortcut. The maskable art is a distinct asset with the mark inside
   the inner 80% safe zone (regenerate both with `npm run icons`).
+
+To change the logo, drop a square PNG at `assets/logo.png` and run `npm run icons`. Every size
+is derived from it, including a maskable variant padded into the safe zone with a colour sampled
+from the logo's own border, and a 32px favicon cropped to the headphones emblem — the full
+artwork is unreadable at tab size. The resizing is done by the small PNG codec in
+`scripts/lib/png.js` on top of `node:zlib`, so this needs no image tooling installed.
 - A registered, controlling service worker.
 
 Verify on the device: Chrome's ⋮ menu should say **"Install app"**, not "Add to Home screen".
@@ -526,7 +532,7 @@ npm run cli -- tts --file=notes.txt --title="My Notes" --dry-run   # what it wou
 npm run cli -- tts --file=notes.txt --title="My Notes" --author="Me"
 npm run cli -- tts:list | tts:resume --id=3 | tts:usage
 npm test                                                       # integration tests
-npm run icons                                                  # regenerate PWA icons
+npm run icons                                                  # regenerate PWA icons from assets/logo.png
 ```
 
 ## Behind a reverse proxy

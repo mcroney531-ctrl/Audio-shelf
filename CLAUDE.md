@@ -15,7 +15,7 @@ npm run cli -- tts:key --set=AIza... | tts:voices | tts:usage
 npm run cli -- tts --file=notes.txt --title="X" --dry-run   # cost, spending nothing
 npm run cli -- tts --file=notes.txt --title="X"             # generate for real
 npm run seed:demo            # silent, tagged MP3s to click around in
-npm run icons                # regenerate the PWA icon set
+npm run icons                # regenerate the PWA icon set from assets/logo.png
 ```
 
 Windows has its own launchers: `start.ps1` (also `-Library`, `-Port`,
@@ -81,6 +81,13 @@ Specific PowerShell traps already paid for:
 - After a `winget install`, PATH is stale in the open session. Refresh it from
   the registry (`[Environment]::GetEnvironmentVariable('PATH','Machine')`)
   rather than telling anyone to reopen their terminal.
+
+**A photographic logo does not survive a 32px favicon.** The full artwork reduces to an
+indistinct brown square in a browser tab, so `make-icons.js` crops the headphones emblem out of
+the middle of the logo for that one size. Look at the generated icons before believing them:
+`scripts/lib/png.js` is a hand-rolled codec, and "the script ran without error" says nothing
+about whether the picture came out right. Bump `VERSION` in `web/sw.js` when icons change, or
+installed PWAs keep serving the old ones from the shell cache.
 
 **A 202 hides a failure nobody sees.** `/api/admin/tts/generate` starts the job in the
 background and answers 202 immediately, so every check that can be made up front must be made
