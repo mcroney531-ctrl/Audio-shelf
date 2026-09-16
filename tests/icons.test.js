@@ -1,8 +1,8 @@
-import test, { describe } from 'node:test';
+import test, { after, before, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { repoRoot } from './helpers.js';
+import { repoRoot, startTestServer } from './helpers.js';
 import { decodePng, encodePng, resize, crop, padded } from '../scripts/lib/png.js';
 
 const icon = (name) => decodePng(readFileSync(path.join(repoRoot, 'web/icons', name)));
@@ -110,5 +110,47 @@ describe('the generated icon set', () => {
         );
       }
     }
+  });
+});
+
+describe('how icons are cached', () => {
+  let server;
+
+  before(async () => { server = await startTestServer({ seed: false, scan: false }); });
+  after(async () => { await server?.stop(); });
+
+  test('icons revalidate instead of being frozen in the browser cache', async () => {
+    // A new logo rewrites every icon under the same filename. Serving those
+    // with a long max-age means a phone keeps the old set even after the app
+    // is uninstalled and reinstalled - the HTTP cache belongs to the browser,
+    // not to the installed PWA - and no service-worker version bump can help,
+    // because cache.addAll() reads through that same cache.
+    for (const name of ['icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'favicon-32.png']) {
+      const response = await server.call(`/icons/${name}`);
+      assert.equal(response.status, 200, name);
+      const control = response.headers.get('cache-control') || '';
+      assert.ok(!/max-age=[1-9]/.test(control),
+        `${name} is served "${control}" — a nonzero max-age freezes a stale icon on every device`);
+      assert.ok(response.headers.get('etag'), `${name} needs an ETag to revalidate against`);
+    }
+  });
+
+  test('an unchanged icon still costs only a 304', async () => {
+    const first = await server.call('/icons/icon-512.png');
+    const second = await server.call('/icons/icon-512.png', {
+      headers: { 'if-none-match': first.headers.get('etag') },
+    });
+    assert.equal(second.status, 304);
+  });
+
+  test('fonts stay immutable — those really never change', async () => {
+    const response = await server.call('/fonts/karla-latin.woff2');
+    assert.match(response.headers.get('cache-control') || '', /max-age=\d{4,}/);
+  });
+
+  test('the service worker fetches its shell past the HTTP cache', async () => {
+    const sw = readFileSync(path.join(repoRoot, 'web/sw.js'), 'utf8');
+    assert.match(sw, /cache:\s*'reload'/,
+      "install must fetch with cache: 'reload', or a version bump can re-cache the same stale files");
   });
 });

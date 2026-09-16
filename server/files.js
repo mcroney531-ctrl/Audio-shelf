@@ -119,7 +119,13 @@ export async function serveStatic(req, res, urlPath) {
     if (path.extname(urlPath)) throw notFound();
     target = path.join(config.webDir, 'index.html');
   }
-  const immutable = /\.(woff2|png|svg|ico)$/i.test(target);
+  // Only fonts are genuinely immutable: their filenames are stable and their
+  // bytes never change. Icons DO change - a new logo rewrites every one of
+  // them under the same name - and a week of unrevalidated caching means a
+  // phone keeps the old set even across uninstalling and reinstalling the app,
+  // because the HTTP cache belongs to the browser, not to the installed PWA.
+  // Everything else revalidates against the ETag above, which costs a 304.
+  const immutable = /\.woff2$/i.test(target);
   await sendFile(req, res, target, {
     cacheControl: immutable ? 'public, max-age=604800' : 'no-cache',
     // The manifest is named .json for maximum Android compatibility, but it

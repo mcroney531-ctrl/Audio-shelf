@@ -89,6 +89,13 @@ the middle of the logo for that one size. Look at the generated icons before bel
 about whether the picture came out right. Bump `VERSION` in `web/sw.js` when icons change, or
 installed PWAs keep serving the old ones from the shell cache.
 
+**Uninstalling a PWA does not clear the browser's HTTP cache.** Icons were served
+`public, max-age=604800`, so a new logo stayed invisible on a phone through both a service-worker
+version bump and a full uninstall/reinstall. Worse, `cache.addAll()` fetches *through* the HTTP
+cache, so the freshly bumped shell cache was refilled with the same stale files - the install
+now uses `new Request(asset, { cache: 'reload' })`. Only fonts are immutable here; anything that
+can be rewritten under the same filename revalidates against its ETag.
+
 **A 202 hides a failure nobody sees.** `/api/admin/tts/generate` starts the job in the
 background and answers 202 immediately, so every check that can be made up front must be made
 up front. The missing-API-key check originally lived inside `runGeneration`, which meant

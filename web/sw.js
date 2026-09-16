@@ -2,7 +2,7 @@
    and downloaded audio served straight from the cache — Range requests
    included, so seeking works with the network off. */
 
-const VERSION = 'v2';  // bumped when the shell changes; v2 = new logo icon set
+const VERSION = 'v3';  // bumped when the shell changes; v3 = new logo icon set
 const SHELL_CACHE = `audioshelf-shell-${VERSION}`;
 const API_CACHE = `audioshelf-api-${VERSION}`;
 const MEDIA_CACHE = 'audioshelf-media-v1'; // deliberately unversioned: user downloads survive updates
@@ -35,7 +35,14 @@ const API_CACHEABLE = [/^\/api\/(shelves|books|progress|me)$/, /^\/api\/books\/\
 const isMedia = (pathname) => /^\/api\/(tracks\/\d+\/stream|books\/\d+\/cover)$/.test(pathname);
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_ASSETS)));
+  // `cache: 'reload'` is what makes bumping VERSION actually mean something.
+  // A plain cache.addAll() fetches through the browser's HTTP cache, so a new
+  // shell cache can be filled with exactly the stale files the bump was meant
+  // to replace - which is how a new icon set survived both a version bump and
+  // a reinstall. Going to the network here is the whole point of installing.
+  event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(
+    SHELL_ASSETS.map((asset) => new Request(asset, { cache: 'reload' })),
+  )));
 });
 
 self.addEventListener('activate', (event) => {
