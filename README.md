@@ -375,10 +375,64 @@ npm run cli -- import --all                       # convert everything pending
 npm run cli -- import --file=book.aax --activation-bytes=1a2b3c4d
 npm run cli -- import --file=book.aaxc --voucher=book.voucher
 npm run cli -- import:checksum --id=3             # checksum for an activation-byte lookup
+npm run cli -- import:reconcile --library=library.json   # account for every book in an Audible export
 ```
 
-The original files are left untouched, so nothing is lost if a conversion goes wrong. Once a book
-is imported you can delete the `.aax` to reclaim the space.
+The original files are left untouched, so nothing is lost if a conversion goes wrong. Keep them
+until a reconciliation (below) says the book is verified and you have a backup.
+
+### Migrating a whole Audible library
+
+[audible-cli](https://github.com/mkb79/audible-cli) can export your library and download all of it,
+which beats fetching books one at a time. Do a **pilot with two or three books first**, including
+an `.aaxc` if your library has any, and play them in the app before running the full download.
+
+1. **Export the inventory and download into a staging folder outside the library**, so the watcher
+   never scans a half-downloaded file:
+
+   ```powershell
+   audible library export --format json --output library.json
+   audible download --all --aax-fallback --filename-mode asin_only --output-dir D:\AudibleDownloads
+   ```
+
+   - `--format json` matters: without it audible-cli writes TSV whatever the file is called.
+     The reconciler reads both, but JSON is less surprising.
+   - `--aax-fallback` fetches AAX where Audible offers it and AAXC (with its `.voucher`) otherwise.
+   - `--filename-mode asin_only` names each file `<ASIN>-<codec>.aax`, which is what lets books be
+     matched reliably. Titles are not unique.
+   - For the pilot, swap `--all` for `--asin B0XXXXXXXX` (repeatable).
+   - Check `audible download --help` on your installed version before the full run.
+
+2. **Move finished downloads into the library** (vouchers with them), rescan, then
+   `npm run cli -- import --all`.
+
+3. **Reconcile.** This accounts for every book in the export, and changes nothing:
+
+   ```powershell
+   npm run cli -- import:reconcile --library=library.json --downloads=D:\AudibleDownloads --json=reconcile.json
+   ```
+
+   Every entry lands in exactly one state:
+
+   | State | Meaning |
+   | --- | --- |
+   | Converted and verified | The `.m4b` exists, ffprobe reads it, and its length matches Audible's listing |
+   | Converted, not verified | Converted, but ffprobe is not installed so the file could not be read |
+   | File missing, empty, unreadable or wrong length | Marked converted but the output is gone or broken, or a download is empty or truncated |
+   | Conversion failed | The converter's error is shown |
+   | Downloaded, not converted yet | With the reason: still in the download folder, not scanned, no voucher, no activation bytes |
+   | Not downloaded | No file carries this ASIN |
+   | Excluded on purpose | Listed in an `--exclude` file: `ASIN  reason`, one per line |
+   | Needs review | No ASIN, a duplicate ASIN, two different copies, or a match by title only |
+
+   Files on disk that match nothing in the export are listed separately rather than ignored. The
+   command exits non-zero until every entry is verified or excluded. "Verified" means the file is
+   sound, not that anyone has listened to it.
+
+4. **Back up, then tidy.** Stop AudioShelf first (`.\scripts\stop.ps1`), then copy the `data`
+   folder: `audioshelf.db` holds listening progress, and `imported` holds the converted books.
+   Copying the database while the server runs can give an inconsistent copy. The backup also
+   contains your activation bytes, so keep it private. Only after that, delete the originals.
 
 > Format-shifting works on books you bought. It does not strip anything from books you did not:
 > without your own account key, an `.aax` stays a locked file on disk.
@@ -526,6 +580,7 @@ npm run cli -- stats
 npm run cli -- import:list                                     # Audible files found and what they need
 npm run cli -- import --all                                    # convert every pending .aax/.aaxc
 npm run cli -- import:activation --set=1a2b3c4d
+npm run cli -- import:reconcile --library=library.json [--downloads=DIR] [--exclude=FILE] [--json=FILE]
 npm run cli -- tts:key --set=AIza...                           # Google key for generating speech
 npm run cli -- tts:voices                                      # voices available, and what each tier costs
 npm run cli -- tts --file=notes.txt --title="My Notes" --dry-run   # what it would cost, spending nothing

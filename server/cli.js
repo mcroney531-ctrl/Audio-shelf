@@ -7,8 +7,11 @@ import { createUser, userCount, hashPassword } from './auth.js';
 import { scanLibrary, scanState } from './scanner.js';
 import {
   checkTools, listImports, runImport, noteImport, readVoucher, normalizeActivationBytes,
-  setSetting, storedActivationBytes, ACTIVATION_KEY, ensureChecksum,
+  setSetting, storedActivationBytes, ACTIVATION_KEY, ensureChecksum, probe,
 } from './audible.js';
+import {
+  parseLibraryExport, parseExclusions, collectSources, reconcile, formatReport,
+} from './reconcile.js';
 import {
   estimate, listVoices, saveApiKey, saveServiceAccount, clearCredentials, credentialSummary,
   createGeneration, runGeneration, listGenerations, monthlyUsage, PRICING, DEFAULT_VOICE, ttsState,
@@ -182,6 +185,88 @@ const commands = {
     }
     const checksum = await ensureChecksum(id);
     console.log(checksum || 'No checksum available for that file.');
+  },
+
+  /**
+   * Accounts for every book in an Audible library export: downloaded,
+   * converted, verified, or what is missing. Read-only - changes nothing.
+   */
+  async 'import:reconcile'() {
+    const exportFile = flag('library');
+    if (!exportFile) {
+      console.error('usage: npm run cli -- import:reconcile --library=library.json [--downloads=D:\\AudibleDownloads]');
+      console.error('                   [--exclude=excluded.txt] [--json=report.json] [--verbose]');
+      console.error('Create the export with: audible library export --format json --output library.json');
+      process.exitCode = 1;
+      return;
+    }
+
+    let parsed;
+    try {
+      parsed = parseLibraryExport(await fs.readFile(path.resolve(exportFile), 'utf8'));
+    } catch (err) {
+      console.error(err.code === 'ENOENT' ? `No such file: ${path.resolve(exportFile)}` : err.message);
+      process.exitCode = 1;
+      return;
+    }
+
+    const excludeFile = flag('exclude');
+    const exclusions = excludeFile
+      ? parseExclusions(await fs.readFile(path.resolve(excludeFile), 'utf8'))
+      : new Map();
+
+    const downloads = flag('downloads') ? path.resolve(flag('downloads')) : null;
+    const known = new Set(parsed.records.map((record) => record.asin).filter(Boolean));
+    const sources = await collectSources([config.libraryDir, downloads], known);
+    const imports = db.prepare('SELECT * FROM imports').all();
+
+    // Check the converted files themselves; the "done" flag is only a claim.
+    const tools = await checkTools();
+    const canProbe = tools.ffmpeg && tools.ffprobe;
+    const outputs = new Map();
+    for (const row of imports) {
+      if (row.status !== 'done' || !row.output || outputs.has(row.output)) continue;
+      const stat = await fs.stat(row.output).catch(() => null);
+      let result = null;
+      if (stat?.size && canProbe) result = await probe(row.output).catch((err) => ({ ok: false, error: err.message }));
+      outputs.set(row.output, { exists: !!stat, size: stat?.size ?? 0, probe: result });
+    }
+
+    const report = reconcile({
+      records: parsed.records,
+      sources,
+      imports,
+      outputs,
+      exclusions,
+      hasActivationBytes: !!storedActivationBytes(),
+      downloadRoots: downloads ? [downloads] : [],
+    });
+
+    console.log(formatReport(report, {
+      verbose: args.includes('--verbose'),
+      header: [
+        `export   : ${path.resolve(exportFile)} (${parsed.format}, ${parsed.records.length} entries)`,
+        `searched : ${[config.libraryDir, downloads].filter(Boolean).join(', ')}`,
+        `ffprobe  : ${canProbe ? 'yes - converted files are read, not just checked for' : 'not found - converted files cannot be verified'}`,
+      ],
+    }));
+
+    const jsonFile = flag('json');
+    if (jsonFile) {
+      // Written by Node rather than a shell redirect: Windows PowerShell 5.1's
+      // `>` writes UTF-16, which most tools then fail to read.
+      await fs.writeFile(path.resolve(jsonFile), JSON.stringify({
+        generatedAt: new Date().toISOString(),
+        export: { path: path.resolve(exportFile), format: parsed.format },
+        searched: [config.libraryDir, downloads].filter(Boolean),
+        ffprobe: canProbe,
+        ...report,
+      }, null, 2) + '\n', 'utf8');
+      console.log(`\nFull report written to ${path.resolve(jsonFile)}`);
+    }
+
+    // Non-zero until the migration is actually done, so a script can tell.
+    if (!report.complete) process.exitCode = 1;
   },
 
   /** Store (or clear) the Google credentials used for generating speech. */

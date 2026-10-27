@@ -11,6 +11,7 @@ npm test                     # integration tests: real server, temp library
 npm run cli -- scan          # rescan the library
 npm run cli -- user:list | user:add | user:password | stats
 npm run cli -- import:list | import --all | import:activation --set=1a2b3c4d
+npm run cli -- import:reconcile --library=library.json   # read-only: every Audible book accounted for
 npm run cli -- tts:key --set=AIza... | tts:voices | tts:usage
 npm run cli -- tts --file=notes.txt --title="X" --dry-run   # cost, spending nothing
 npm run cli -- tts --file=notes.txt --title="X"             # generate for real
@@ -34,6 +35,7 @@ server/     node:http + node:sqlite, no framework
   files.js    static serving and byte-range streaming
   upload.js   raw-body uploads, path sanitising
   audible.js  ffmpeg wrapper for .aax/.aaxc conversion
+  reconcile.js  Audible export vs files vs imports; read-only, pure core
   tts.js      text -> Google Cloud TTS -> chaptered MP3s in data/generated
   api.js      the JSON routes; index.js owns streaming and upload routes
 web/        no build step. ES modules, custom CSS, self-hosted fonts
@@ -95,6 +97,13 @@ version bump and a full uninstall/reinstall. Worse, `cache.addAll()` fetches *th
 cache, so the freshly bumped shell cache was refilled with the same stale files - the install
 now uses `new Request(asset, { cache: 'reload' })`. Only fonts are immutable here; anything that
 can be rewritten under the same filename revalidates against its ETag.
+
+**"Done" in the imports table is a claim, not a fact.** A row can say `done` while its `.m4b` has
+been deleted, or was cut short by a truncated download. `import:reconcile` checks the output
+exists, is non-empty, reads with ffprobe and matches Audible's listed runtime before calling a
+book verified. It matches by ASIN only: titles collide across editions, so a title match is
+always reported for review, never as success. And `audible library export` writes TSV unless
+given `--format json`, whatever the output file is named, so the reader accepts both.
 
 **A 202 hides a failure nobody sees.** `/api/admin/tts/generate` starts the job in the
 background and answers 202 immediately, so every check that can be made up front must be made
