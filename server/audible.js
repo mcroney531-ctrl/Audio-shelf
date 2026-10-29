@@ -338,9 +338,17 @@ export async function noteImport(file, stat) {
   return Number(inserted.lastInsertRowid);
 }
 
-/** Drops rows for files that are no longer on disk. */
+/**
+ * Drops rows for files that are no longer on disk - except finished ones.
+ *
+ * Deleting the original .aax/.aaxc after a conversion is the expected end of a
+ * migration, not an accident. A finished row is the only record of which
+ * Audible book (its ASIN is in the source filename) became which .m4b, so
+ * pruning it made `import:reconcile` report a fully migrated library as "not
+ * downloaded" the moment the originals were cleaned up.
+ */
 export function pruneImports() {
-  const rows = db.prepare('SELECT id, path FROM imports').all();
+  const rows = db.prepare("SELECT id, path FROM imports WHERE status != 'done'").all();
   for (const row of rows) {
     if (!existsSync(row.path)) db.prepare('DELETE FROM imports WHERE id = ?').run(row.id);
   }

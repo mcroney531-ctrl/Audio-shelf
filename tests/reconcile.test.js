@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { promises as fs, mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { repoRoot } from './helpers.js';
+import { repoRoot, runScript } from './helpers.js';
 import {
   parseLibraryExport, parseExclusions, asinsInName, reconcile, formatReport, pathKey,
 } from '../server/reconcile.js';
@@ -405,6 +405,25 @@ describe('the import:reconcile command', { skip: ffmpegAvailable ? false : 'ffmp
     run(`--library=${path.join(root, 'library.json')}`);
     const afterRun = JSON.stringify(db.prepare('SELECT * FROM imports ORDER BY id').all());
     assert.equal(afterRun, before);
+  });
+
+  test('deleting the originals after conversion does not erase the record', async () => {
+    // B00HHHHHHH's source .aax is not on disk - exactly the state after the
+    // originals are cleaned up. A rescan used to delete such rows, and with
+    // them the only link from the ASIN to its converted .m4b.
+    await runScript(['server/cli.js', 'scan'], env);
+    const { db } = await import('../server/db.js');
+    const rows = db.prepare('SELECT path, status FROM imports').all();
+    assert.ok(rows.some((row) => row.path.includes('B00HHHHHHH') && row.status === 'done'),
+      'a finished import survives its original being deleted');
+    assert.ok(!rows.some((row) => row.path.includes('B00CCCCCCC')),
+      'an unfinished one whose file is gone is still cleared away');
+
+    const reportFile = path.join(root, 'after-cleanup.json');
+    run(`--library=${path.join(root, 'library.json')}`, `--json=${reportFile}`);
+    const report = JSON.parse(readFileSync(reportFile, 'utf8'));
+    assert.equal(report.entries.find((entry) => entry.asin === 'B00HHHHHHH').state, 'verified',
+      'once scanned onto the shelf, it verifies without the original');
   });
 
   test('a missing export file is a clear error, not a stack trace', () => {

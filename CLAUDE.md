@@ -119,6 +119,11 @@ it is why the converter writes `imported/<author>/<title>/<title>.m4b`, one fold
 titles loose in `<author>/`, a second book by the same author merged into the first as "part 2".
 Books converted before that change still sit loose, alone in their folder, and keep their key.
 
+**A finished import's record must outlive its original.** The scan used to delete every imports
+row whose source file was gone, but deleting the `.aax`/`.aaxc` after conversion is the normal end
+of a migration, and that row is the only link from an ASIN to its `.m4b`. Reconcile then reported a
+fully migrated library as "not downloaded". `pruneImports` now keeps `done` rows.
+
 **`Stop-ScheduledTask` does not reliably stop the server.** On the real machine, `scripts/stop.ps1`
 still found the task's `node.exe` holding port 8080 afterwards. Stop the task, then run
 `stop.ps1` and check it says "Port 8080 is free." before installing, scanning or converting.
