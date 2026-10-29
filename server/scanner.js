@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { parseFile } from 'music-metadata';
 import { db } from './db.js';
 import { config } from './config.js';
-import { AUDIBLE_EXT, noteImport, pruneImports } from './audible.js';
+import { AUDIBLE_EXT, noteImport, pruneImports, probeChapters } from './audible.js';
 
 const AUDIO_EXT = new Map([
   ['.mp3', 'audio/mpeg'],
@@ -191,9 +191,20 @@ function readTags(metadata) {
   };
 }
 
+const MP4_FAMILY = new Set(['.m4b', '.m4a', '.mp4']);
+
 async function parseTrack(file) {
-  const metadata = await parseFile(file, { duration: true, includeChapters: true, skipPostHeaders: false });
-  return { metadata, tags: readTags(metadata) };
+  try {
+    const metadata = await parseFile(file, { duration: true, includeChapters: true, skipPostHeaders: false });
+    return { metadata, tags: readTags(metadata) };
+  } catch (err) {
+    // A chapter table music-metadata cannot follow used to keep the whole book
+    // off the shelf - every Audible book converted here, in practice. Chapters
+    // are a nicety; the book is not. Read it again without them, and let a
+    // second failure (a genuinely broken file) skip it as before.
+    const metadata = await parseFile(file, { duration: true, includeChapters: false, skipPostHeaders: false });
+    return { metadata, tags: readTags(metadata), chapterError: err.message };
+  }
 }
 
 const upsertBook = db.prepare(`
@@ -258,14 +269,28 @@ async function ingest(book, existing, now) {
     offset += duration;
   }
 
-  // Chapters: embedded ones win, otherwise each file is a chapter.
+  // Chapters: embedded ones win, otherwise each file is a chapter. For MP4
+  // files ffprobe is the authority when it is installed (see probeChapters).
   let chapters = [];
-  const embedded = parsed.length === 1 ? first.metadata.format?.chapters : null;
+  let embedded = null;
+  if (parsed.length === 1) {
+    if (MP4_FAMILY.has(path.extname(first.file).toLowerCase())) embedded = await probeChapters(first.file);
+    if (!embedded && first.metadata.format?.chapters?.length) {
+      embedded = first.metadata.format.chapters.map((chapter) => ({
+        title: chapter.title,
+        start: chapterSeconds(chapter, first.metadata.format),
+      }));
+    }
+    if (!embedded && first.chapterError) {
+      console.warn(`[scan] ${path.relative(config.libraryDir, first.file)}: chapters need ffprobe to read `
+        + `(${first.chapterError}); shelving it without chapter marks`);
+    }
+  }
   if (embedded?.length) {
     chapters = embedded.map((chapter, idx) => ({
       idx,
       title: clean(chapter.title) || `Chapter ${idx + 1}`,
-      start: chapterSeconds(chapter, first.metadata.format),
+      start: chapter.start,
     })).map((chapter, idx, all) => ({
       ...chapter,
       end: idx + 1 < all.length ? all[idx + 1].start : offset,

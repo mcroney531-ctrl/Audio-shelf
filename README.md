@@ -416,8 +416,9 @@ an `.aaxc` if your library has any, and play them in the app before running the 
 
    | State | Meaning |
    | --- | --- |
-   | Converted and verified | The `.m4b` exists, ffprobe reads it, and its length matches Audible's listing |
+   | Converted and verified | The `.m4b` exists, ffprobe reads it, its length matches Audible's listing, and it is on the shelf |
    | Converted, not verified | Converted, but ffprobe is not installed so the file could not be read |
+   | Converted, but not on the shelf | The file is fine but the scanner has not added it: rescan, and check the log for a `[scan] skipping` line |
    | File missing, empty, unreadable or wrong length | Marked converted but the output is gone or broken, or a download is empty or truncated |
    | Conversion failed | The converter's error is shown |
    | Downloaded, not converted yet | With the reason: still in the download folder, not scanned, no voucher, no activation bytes |
@@ -427,7 +428,7 @@ an `.aaxc` if your library has any, and play them in the app before running the 
 
    Files on disk that match nothing in the export are listed separately rather than ignored. The
    command exits non-zero until every entry is verified or excluded. "Verified" means the file is
-   sound, not that anyone has listened to it.
+   sound and listed in the app, not that anyone has listened to it.
 
 4. **Back up, then tidy.** Stop AudioShelf first (`.\scripts\stop.ps1`), then copy the `data`
    folder: `audioshelf.db` holds listening progress, and `imported` holds the converted books.

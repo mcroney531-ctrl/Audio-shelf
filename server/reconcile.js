@@ -14,9 +14,10 @@
  * Title matching is only ever a fallback, and its results are always flagged for
  * review rather than trusted.
  *
- * "Verified" means the converted file exists, is not empty, ffprobe can read it
- * and its length agrees with what Audible says the book runs for. It does not
- * mean anyone has listened to it. Play a few before deleting originals.
+ * "Verified" means the converted file exists, is not empty, ffprobe can read it,
+ * its length agrees with what Audible says the book runs for, and the scanner
+ * has put it on the shelf. It does not mean anyone has listened to it. Play a
+ * few before deleting originals.
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -25,6 +26,7 @@ import path from 'node:path';
 export const STATES = [
   ['verified', 'Converted and verified'],
   ['unverified', 'Converted, not verified (ffprobe unavailable)'],
+  ['not-shelved', 'Converted, but not on the shelf'],
   ['invalid', 'File missing, empty, unreadable or wrong length'],
   ['failed', 'Conversion failed'],
   ['not-converted', 'Downloaded, not converted yet'],
@@ -207,10 +209,12 @@ export async function collectSources(roots, knownAsins) {
 // ---------------------------------------------------------------------------
 // Reconciling
 // ---------------------------------------------------------------------------
-const samePath = (a, b) => {
-  const norm = (value) => path.resolve(value).replace(/\\/g, '/');
-  return process.platform === 'win32' ? norm(a).toLowerCase() === norm(b).toLowerCase() : norm(a) === norm(b);
+/** A path in a form two spellings of the same file agree on. */
+export const pathKey = (value) => {
+  const norm = path.resolve(value).replace(/\\/g, '/');
+  return process.platform === 'win32' ? norm.toLowerCase() : norm;
 };
+const samePath = (a, b) => pathKey(a) === pathKey(b);
 
 const normaliseTitle = (value) => String(value || '').toLowerCase()
   .replace(/^(the|a|an)\s+/, '').replace(/[^a-z0-9]+/g, '');
@@ -255,7 +259,7 @@ function buildCandidates(sources, imports) {
 }
 
 /** Where one downloaded copy of a book has got to. */
-function assess(candidate, record, { outputs, hasActivationBytes, downloadRoots }) {
+function assess(candidate, record, { outputs, hasActivationBytes, downloadRoots, shelved }) {
   const where = candidate.paths[0];
   const row = candidate.import;
 
@@ -307,6 +311,15 @@ function assess(candidate, record, { outputs, hasActivationBytes, downloadRoots 
       };
     }
   }
+  // A sound file nobody can find in the app is not migrated. The first pilot
+  // proved this: three books passed every check above while the scanner was
+  // rejecting all of them, so the report and the shelf disagreed.
+  if (shelved && !shelved.has(pathKey(row.output))) {
+    return {
+      state: 'not-shelved',
+      detail: `reads fine but is not on the shelf: rescan, and look for a "[scan] skipping" line for ${row.output}`,
+    };
+  }
   return { state: 'verified', detail: `${formatDuration(out.probe.duration)}, ${row.output}` };
 }
 
@@ -316,7 +329,7 @@ function assess(candidate, record, { outputs, hasActivationBytes, downloadRoots 
  */
 export function reconcile({
   records, sources = [], imports = [], outputs = new Map(), exclusions = new Map(),
-  hasActivationBytes = false, downloadRoots = [],
+  hasActivationBytes = false, downloadRoots = [], shelved = null,
 }) {
   const known = new Set(records.map((record) => record.asin).filter(Boolean));
   const counts = new Map();
@@ -327,7 +340,9 @@ export function reconcile({
     candidate.asins = [...new Set(candidate.paths.flatMap((p) => asinsInName(p, known)))];
     candidate.claimed = false;
   }
-  const context = { outputs, hasActivationBytes, downloadRoots };
+  // `shelved` is the set of track paths the scanner has put on the shelf (as
+  // pathKey values). Leaving it out skips that check.
+  const context = { outputs, hasActivationBytes, downloadRoots, shelved };
 
   const entries = records.map((record) => {
     const base = { index: record.index, asin: record.asin, title: record.title, authors: record.authors };
@@ -431,7 +446,7 @@ export function formatReport(report, { verbose = false, header = [] } = {}) {
   lines.push(report.complete
     ? 'Complete: every entry is verified or deliberately excluded.'
     : `Not complete: ${open} of ${report.totals.entries} entries need attention.`);
-  lines.push('"Verified" means the file exists, reads, and is the right length - not that it has been listened to.');
+  lines.push('"Verified" means the file exists, reads, is the right length and is on the shelf - not that it has been listened to.');
   lines.push('Keep the original .aax/.aaxc files and vouchers until you have played a sample and taken a backup.');
   return lines.join('\n');
 }

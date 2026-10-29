@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { repoRoot } from './helpers.js';
 import {
-  parseLibraryExport, parseExclusions, asinsInName, reconcile, formatReport,
+  parseLibraryExport, parseExclusions, asinsInName, reconcile, formatReport, pathKey,
 } from '../server/reconcile.js';
 
 const ffmpegAvailable = spawnSync('ffmpeg', ['-hide_banner', '-version']).status === 0;
@@ -142,6 +142,22 @@ describe('reconciling', () => {
     assert.match(detailOf(report, 'B00DDDDDDD'), /1h 0m.*10h 0m/);
     assert.equal(stateOf(report, 'B00EEEEEEE'), 'unverified', 'without ffprobe nothing is called verified');
     assert.equal(stateOf(report, 'B00FFFFFFF'), 'invalid');
+    assert.equal(report.complete, false);
+  });
+
+  test('a sound file that never reached the shelf is not verified', () => {
+    // What the first real pilot hit: ffprobe read all three books perfectly
+    // while the scanner rejected every one, so "verified" and an empty shelf
+    // disagreed.
+    const report = reconcile({
+      records: indexed([record('B00AAAAAAA', 'On shelf'), record('B00BBBBBBB', 'Rejected by scan')]),
+      imports: [doneRow('B00AAAAAAA', '/out/a.m4b'), doneRow('B00BBBBBBB', '/out/b.m4b')],
+      outputs: new Map([['/out/a.m4b', goodOutput()], ['/out/b.m4b', goodOutput()]]),
+      shelved: new Set([pathKey('/out/a.m4b')]),
+    });
+    assert.equal(stateOf(report, 'B00AAAAAAA'), 'verified');
+    assert.equal(stateOf(report, 'B00BBBBBBB'), 'not-shelved');
+    assert.match(detailOf(report, 'B00BBBBBBB'), /skipping/);
     assert.equal(report.complete, false);
   });
 
@@ -307,6 +323,9 @@ describe('the import:reconcile command', { skip: ffmpegAvailable ? false : 'ffmp
       '-t', '60', '-c:a', 'aac', '-b:a', '32k', '-f', 'mp4', good]);
     assert.equal(made.status, 0, String(made.stderr));
 
+    const unshelved = path.join(out, 'Second.m4b');
+    writeFileSync(unshelved, readFileSync(good));
+
     const fakeAudible = (file) => writeFileSync(file, Buffer.alloc(2048, 1));
     fakeAudible(path.join(lib, 'B00AAAAAAA-LC_64_22050_stereo.aax'));
     fakeAudible(path.join(downloads, 'B00DDDDDDD-AAX_44_128.aaxc'));
@@ -320,6 +339,7 @@ describe('the import:reconcile command', { skip: ffmpegAvailable ? false : 'ffmp
       { asin: 'B00EEEEEEE', title: 'Refunded', authors: 'Ann' },
       { asin: 'B00FFFFFFF', title: 'Never Fetched', authors: 'Ann' },
       { asin: 'B00GGGGGGG', title: 'Truncated', authors: 'Ann', runtime_length_min: 600 },
+      { asin: 'B00HHHHHHH', title: 'Never Scanned', authors: 'Ann', runtime_length_min: 1 },
     ]));
     writeFileSync(path.join(root, 'complete.json'), JSON.stringify([
       { asin: 'B00AAAAAAA', title: 'First', runtime_length_min: 1 },
@@ -337,6 +357,12 @@ describe('the import:reconcile command', { skip: ffmpegAvailable ? false : 'ffmp
     insert.run(path.join(lib, 'B00BBBBBBB-LC_64_22050_stereo.aax'), 'done', null, path.join(out, 'Gone.m4b'), 'Output Gone');
     insert.run(path.join(lib, 'B00CCCCCCC-LC_64_22050_stereo.aax'), 'failed', 'Decryption failed', null, 'Failed One');
     insert.run(path.join(lib, 'B00GGGGGGG-LC_64_22050_stereo.aax'), 'done', null, good, 'Truncated');
+    insert.run(path.join(lib, 'B00HHHHHHH-LC_64_22050_stereo.aax'), 'done', null, unshelved, 'Never Scanned');
+
+    // Only the first converted book has been through the scanner.
+    const shelf = db.prepare(`INSERT INTO books (key, folder, title, sort_title, fingerprint, added_at, scanned_at)
+      VALUES ('first', ?, 'First', 'first', 'fp', 0, 0)`).run(out);
+    db.prepare('INSERT INTO tracks (book_id, idx, path) VALUES (?, 0, ?)').run(Number(shelf.lastInsertRowid), good);
   });
 
   after(async () => { await fs.rm(root, { recursive: true, force: true }); });
@@ -358,11 +384,12 @@ describe('the import:reconcile command', { skip: ffmpegAvailable ? false : 'ffmp
     assert.equal(state('B00EEEEEEE'), 'excluded');
     assert.equal(state('B00FFFFFFF'), 'not-downloaded');
     assert.equal(state('B00GGGGGGG'), 'invalid', 'a one-minute file for a ten-hour book');
-    assert.equal(report.totals.accounted, 7);
+    assert.equal(state('B00HHHHHHH'), 'not-shelved', 'converted and readable, but the scanner never added it');
+    assert.equal(report.totals.accounted, 8);
     assert.equal(report.ffprobe, true);
     assert.deepEqual(report.extras.map((extra) => path.basename(extra.path)), ['B09ZZZZZZZ-LC_64_22050_stereo.aax']);
 
-    assert.match(result.stdout, /Not complete: 5 of 7/);
+    assert.match(result.stdout, /Not complete: 6 of 8/);
     assert.match(result.stdout, /every entry accounted for/);
   });
 

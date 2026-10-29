@@ -10,7 +10,7 @@ import {
   setSetting, storedActivationBytes, ACTIVATION_KEY, ensureChecksum, probe,
 } from './audible.js';
 import {
-  parseLibraryExport, parseExclusions, collectSources, reconcile, formatReport,
+  parseLibraryExport, parseExclusions, collectSources, reconcile, formatReport, pathKey,
 } from './reconcile.js';
 import {
   estimate, listVoices, saveApiKey, saveServiceAccount, clearCredentials, credentialSummary,
@@ -240,6 +240,7 @@ const commands = {
       exclusions,
       hasActivationBytes: !!storedActivationBytes(),
       downloadRoots: downloads ? [downloads] : [],
+      shelved: new Set(db.prepare('SELECT path FROM tracks').all().map((row) => pathKey(row.path))),
     });
 
     console.log(formatReport(report, {

@@ -144,6 +144,30 @@ export async function probe(file, keys = {}) {
   };
 }
 
+let ffprobeMissing = false;
+
+/**
+ * Chapter marks as ffprobe reads them, in seconds, or null when ffprobe is not
+ * installed or finds none, so the caller can fall back.
+ *
+ * The scanner prefers this for MP4 files because music-metadata's chapter
+ * reader assumes one chapter title per chunk of the file. ffmpeg packs several
+ * into one chunk, so on every book this converter writes, music-metadata
+ * either throws (long books) or quietly returns too few chapters (short ones).
+ */
+export async function probeChapters(file) {
+  if (ffprobeMissing) return null;
+  const result = await run(config.ffprobe, ['-v', 'error', '-print_format', 'json', '-show_chapters', '-i', file]);
+  if (result.code === -1) {
+    ffprobeMissing = true;   // not installed: stop asking for the rest of this scan
+    return null;
+  }
+  const chapters = (parseJson(result.stdout)?.chapters || [])
+    .map((chapter) => ({ title: chapter.tags?.title || null, start: Number(chapter.start_time) }))
+    .filter((chapter) => Number.isFinite(chapter.start));
+  return chapters.length ? chapters : null;
+}
+
 /**
  * The AAX file checksum ffmpeg prints. It is what activation-byte lookup tools
  * take as input, so we surface it rather than making anyone re-run ffmpeg.

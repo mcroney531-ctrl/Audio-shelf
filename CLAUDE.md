@@ -100,10 +100,18 @@ can be rewritten under the same filename revalidates against its ETag.
 
 **"Done" in the imports table is a claim, not a fact.** A row can say `done` while its `.m4b` has
 been deleted, or was cut short by a truncated download. `import:reconcile` checks the output
-exists, is non-empty, reads with ffprobe and matches Audible's listed runtime before calling a
-book verified. It matches by ASIN only: titles collide across editions, so a title match is
+exists, is non-empty, reads with ffprobe, matches Audible's listed runtime and is in the `tracks`
+table (on the shelf) before calling a book verified. It matches by ASIN only: titles collide across editions, so a title match is
 always reported for review, never as success. And `audible library export` writes TSV unless
 given `--format json`, whatever the output file is named, so the reader accepts both.
+
+**music-metadata cannot read the chapters ffmpeg writes.** Its MP4 chapter reader assumes one
+chapter title per chunk; ffmpeg packs several into one, so on every book the Audible converter
+produces it either throws ("Expected equal chunk-offset-table & sample-size-table length") or
+silently returns too few chapters. The first real migration pilot lost all three books to this
+while ffprobe read them perfectly. The scanner now retries without chapters rather than skipping
+a book, and takes MP4 chapters from ffprobe when it is installed. Never let a chapter problem keep
+a whole book off the shelf.
 
 **A 202 hides a failure nobody sees.** `/api/admin/tts/generate` starts the job in the
 background and answers 202 immediately, so every check that can be made up front must be made
