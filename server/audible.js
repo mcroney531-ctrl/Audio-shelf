@@ -195,19 +195,27 @@ const sanitize = (value, fallback) => {
   return cleaned.slice(0, 120) || fallback;
 };
 
-async function uniquePath(target) {
-  const ext = path.extname(target);
-  const base = target.slice(0, -ext.length);
-  let candidate = target;
-  for (let n = 2; n < 100; n++) {
-    try {
-      await fs.access(candidate);
-      candidate = `${base} (${n})${ext}`;
-    } catch {
-      return candidate;
-    }
+/**
+ * A title short enough to use twice in a path (folder and file) without
+ * pushing a long book past Windows' 260-character limit, which Explorer still
+ * honours. Cut at a word, and never end on a dot or space, which Windows
+ * silently strips from folder names.
+ */
+const pathName = (title, max = 80) => {
+  if (title.length <= max) return title.replace(/[. ]+$/, '');
+  const cut = title.slice(0, max);
+  const word = cut.lastIndexOf(' ');
+  return (word > max / 2 ? cut.slice(0, word) : cut).replace(/[. ,;-]+$/, '');
+};
+
+/** The folder itself, or the first "name (n)" beside it that is free or empty. */
+async function freeFolder(target) {
+  for (let n = 1; n < 100; n++) {
+    const candidate = n === 1 ? target : `${target} (${n})`;
+    const entries = await fs.readdir(candidate).catch(() => []);
+    if (!entries.length) return candidate;
   }
-  return candidate;
+  return `${target} (${Date.now()})`;
 }
 
 /**
@@ -238,9 +246,15 @@ export async function convert(file, keys, { onProgress, outputDir = config.impor
 
   const title = sanitize(info.title, path.basename(file, extension));
   const author = sanitize(info.author, 'Unknown Author');
-  const targetDir = path.join(outputDir, author);
-  await fs.mkdir(targetDir, { recursive: true });
-  const finalPath = await uniquePath(path.join(targetDir, `${title}.m4b`));
+  // One folder per book. The scanner reads a folder holding several audio files
+  // as one multi-part book, so with every title sitting loose in <author>/, two
+  // books by the same author - or a re-import of the same one - would merge
+  // into a single shelf entry. The shelf title comes from the file's tags, so
+  // shortening the names here costs nothing but path length.
+  const name = pathName(title);
+  const bookDir = await freeFolder(path.join(outputDir, author, name));
+  await fs.mkdir(bookDir, { recursive: true });
+  const finalPath = path.join(bookDir, `${name}.m4b`);
   const tempPath = `${finalPath}.part`;
 
   const args = [

@@ -123,12 +123,21 @@ async function fingerprint(files) {
   return { hash: sha1(parts.join('|')), stats: parts };
 }
 
+/**
+ * A chapter's start in seconds. The chapter's own start and timescale come
+ * first: music-metadata 12 reports sampleOffset as 0 for every chapter of an
+ * ffmpeg-written MP4, so trusting it put every chapter at 0:00 - right count,
+ * useless seeking. sampleOffset is only a fallback for parsers that give
+ * nothing else.
+ */
 function chapterSeconds(chapter, format) {
-  if (Number.isFinite(chapter.sampleOffset) && format.sampleRate) {
+  if (Number.isFinite(chapter.start) && chapter.timeScale) {
+    return chapter.start / chapter.timeScale;
+  }
+  if (Number.isFinite(chapter.sampleOffset) && chapter.sampleOffset > 0 && format.sampleRate) {
     return chapter.sampleOffset / format.sampleRate;
   }
-  const scale = chapter.timeScale || 1000;
-  return (chapter.start || 0) / scale;
+  return (chapter.start || 0) / 1000;
 }
 
 async function saveCover(key, picture, folder) {

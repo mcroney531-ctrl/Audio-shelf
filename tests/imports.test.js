@@ -105,7 +105,7 @@ describe('conversion', { skip }, () => {
 
     assert.equal(result.title, 'A Test Recording');
     assert.equal(result.author, 'Test Author');
-    assert.equal(result.path, path.join(outputDir, 'Test Author', 'A Test Recording.m4b'));
+    assert.equal(result.path, path.join(outputDir, 'Test Author', 'A Test Recording', 'A Test Recording.m4b'));
     assert.ok(seen.at(-1) === 1, 'progress should finish at 100%');
 
     const info = await probe(result.path);
@@ -121,7 +121,9 @@ describe('conversion', { skip }, () => {
     const { convert } = await import('../server/audible.js');
     const outputDir = path.join(workDir, 'out');
     const again = await convert(fixture, {}, { outputDir });
-    assert.equal(again.path, path.join(outputDir, 'Test Author', 'A Test Recording (2).m4b'));
+    // Its own folder, not a second file beside the first: two files in one
+    // folder are read as one two-part book.
+    assert.equal(again.path, path.join(outputDir, 'Test Author', 'A Test Recording (2)', 'A Test Recording.m4b'));
   });
 
   test('refuses a .aax with no activation bytes', async () => {

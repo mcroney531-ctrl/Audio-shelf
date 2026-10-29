@@ -358,8 +358,10 @@ Then:
 1. Copy the files anywhere inside your library folder (keep each `.voucher` beside its `.aaxc`).
 2. Open **Imports** (admins only), paste your activation bytes once — they are stored server-side
    and only ever shown back masked.
-3. Hit **Convert**. Progress is live; the finished `.m4b` lands in the imports folder
-   (`<data>/imported` by default) and appears on the shelf as soon as the follow-up scan finishes.
+3. Hit **Convert**. Progress is live; the finished `.m4b` lands in its own folder in the imports
+   folder (`<data>/imported/<author>/<title>/` by default) and appears on the shelf as soon as the
+   follow-up scan finishes. One folder per book matters: a folder holding several audio files is
+   read as one multi-part book.
 
 The activation-byte lookup tools want the file checksum ffmpeg prints — the **Checksum** button on
 each `.aax` row shows it without you having to run ffmpeg by hand.

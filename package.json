@@ -2,7 +2,7 @@
   "name": "audio-shelf",
   "version": "0.1.0",
   "private": true,
-  "description": "AudioShelf \u2014 a self-hosted audiobook server with an offline-capable PWA player.",
+  "description": "AudioShelf — a self-hosted audiobook server with an offline-capable PWA player.",
   "type": "module",
   "engines": {
     "node": ">=22.5.0"
@@ -16,6 +16,6 @@
     "test": "node --disable-warning=ExperimentalWarning --test 'tests/**/*.test.js'"
   },
   "dependencies": {
-    "music-metadata": "^11.15.0"
+    "music-metadata": "^12.3.2"
   }
 }

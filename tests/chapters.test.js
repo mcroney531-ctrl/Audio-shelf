@@ -85,11 +85,24 @@ describe('scanning converted books with many chapters', { skip }, () => {
     assert.equal(shelf.two?.chapters.length, 2);
   });
 
-  test('without ffprobe the book still reaches the shelf, just without chapter marks', async () => {
+  test('without ffprobe the chapters still come through, at the right times', async () => {
+    // music-metadata 12 reads these chapter tables, but reports sampleOffset
+    // as 0 for every chapter. Trusting that put all 41 chapters at 0:00: the
+    // count looked right and every chapter seeked to the start of the book.
     const { output, shelf } = await scan('without-ffprobe', { AUDIOSHELF_FFPROBE: path.join(root, 'no-such-ffprobe') });
     assert.doesNotMatch(output, /skipping/, 'a chapter problem must never keep a book off the shelf');
-    assert.ok(shelf.many, 'the 41-chapter book is on the shelf');
-    assert.ok(shelf.many.duration > 1200, 'with its full length');
-    assert.match(output, /chapters need ffprobe/, 'and the scan says why its chapters are missing');
+    assert.ok(shelf.many.duration > 1200, 'the 41-chapter book is on the shelf at its full length');
+    assert.equal(shelf.many.chapters.length, 41);
+    const starts = shelf.many.chapters.map((chapter) => Math.round(chapter.start));
+    assert.deepEqual(starts, Array.from({ length: 41 }, (_, i) => i * 30), 'each chapter starts 30 seconds after the last');
+    assert.equal(shelf.two.chapters.length, 2);
+    assert.equal(Math.round(shelf.two.chapters[1].start), 20);
+  });
+
+  test('with ffprobe, every chapter start matches what ffprobe reports', async () => {
+    const { shelf } = await scan('timestamps');
+    const probed = JSON.parse(spawnSync('ffprobe', ['-v', 'error', '-print_format', 'json', '-show_chapters', books.many]).stdout)
+      .chapters.map((chapter) => Math.round(Number(chapter.start_time)));
+    assert.deepEqual(shelf.many.chapters.map((chapter) => Math.round(chapter.start)), probed);
   });
 });

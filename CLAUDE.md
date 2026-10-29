@@ -105,13 +105,22 @@ table (on the shelf) before calling a book verified. It matches by ASIN only: ti
 always reported for review, never as success. And `audible library export` writes TSV unless
 given `--format json`, whatever the output file is named, so the reader accepts both.
 
-**music-metadata cannot read the chapters ffmpeg writes.** Its MP4 chapter reader assumes one
+**Chapters from ffmpeg-written MP4s are easy to get subtly wrong.** music-metadata 11 assumed one
 chapter title per chunk; ffmpeg packs several into one, so on every book the Audible converter
-produces it either throws ("Expected equal chunk-offset-table & sample-size-table length") or
-silently returns too few chapters. The first real migration pilot lost all three books to this
-while ffprobe read them perfectly. The scanner now retries without chapters rather than skipping
-a book, and takes MP4 chapters from ffprobe when it is installed. Never let a chapter problem keep
-a whole book off the shelf.
+produces it either threw ("Expected equal chunk-offset-table & sample-size-table length") or
+silently returned too few chapters. The first real migration pilot lost all three books to it.
+Version 12 reads the table but reports `sampleOffset: 0` for every chapter, so trusting that field
+put all 41 chapters at 0:00 - the right count, useless seeking. Now: the scanner retries without
+chapters rather than skipping a book, takes MP4 chapters from ffprobe when installed, and
+`chapterSeconds` uses each chapter's own `start / timeScale`. Test chapter *times*, never just counts.
+
+**A folder of several audio files is one book.** That is the rule for multi-part audiobooks, and
+it is why the converter writes `imported/<author>/<title>/<title>.m4b`, one folder per book. With
+titles loose in `<author>/`, a second book by the same author merged into the first as "part 2".
+Books converted before that change still sit loose, alone in their folder, and keep their key.
+
+**A dependency bump needs `npm install` on the PC.** `start.ps1` only installs when `node_modules`
+is missing, so after pulling a new `package.json` the server quietly runs the old packages.
 
 **A 202 hides a failure nobody sees.** `/api/admin/tts/generate` starts the job in the
 background and answers 202 immediately, so every check that can be made up front must be made
