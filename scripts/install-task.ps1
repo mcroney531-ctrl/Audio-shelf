@@ -26,6 +26,10 @@ if ($Remove) {
   if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+    # Stopping the task does not reliably stop the node.exe it started, so
+    # free the port as well rather than leave an orphaned server behind.
+    $stopper = Join-Path $PSScriptRoot 'stop.ps1'
+    if (Test-Path $stopper) { & $stopper }
     Write-Host "Removed the '$TaskName' task. AudioShelf will not start at logon any more." -ForegroundColor Yellow
   } else {
     Write-Host "No '$TaskName' task is registered." -ForegroundColor DarkGray
@@ -78,7 +82,8 @@ foreach ($line in Get-Content $envFile) {
 
 Write-Host "`nAudioShelf now starts automatically when you log in." -ForegroundColor Green
 Write-Host "  http://localhost:$port" -ForegroundColor Yellow
-Write-Host '  Stop or start it any time in Task Scheduler, or with:' -ForegroundColor DarkGray
-Write-Host "    Stop-ScheduledTask -TaskName $TaskName" -ForegroundColor DarkGray
+Write-Host '  To stop it (Stop-ScheduledTask alone can leave node.exe running):' -ForegroundColor DarkGray
+Write-Host "    Stop-ScheduledTask -TaskName $TaskName; .\scripts\stop.ps1" -ForegroundColor DarkGray
+Write-Host '  To start it again:' -ForegroundColor DarkGray
 Write-Host "    Start-ScheduledTask -TaskName $TaskName" -ForegroundColor DarkGray
 Write-Host "  Remove it with:  .\scripts\install-task.ps1 -Remove`n" -ForegroundColor DarkGray

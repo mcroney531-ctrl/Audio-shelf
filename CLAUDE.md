@@ -119,6 +119,11 @@ it is why the converter writes `imported/<author>/<title>/<title>.m4b`, one fold
 titles loose in `<author>/`, a second book by the same author merged into the first as "part 2".
 Books converted before that change still sit loose, alone in their folder, and keep their key.
 
+**`Stop-ScheduledTask` does not reliably stop the server.** On the real machine, `scripts/stop.ps1`
+still found the task's `node.exe` holding port 8080 afterwards. Stop the task, then run
+`stop.ps1` and check it says "Port 8080 is free." before installing, scanning or converting.
+(Seen once on Windows; not reproducible from Linux.)
+
 **A dependency bump needs `npm install` on the PC.** `start.ps1` only installs when `node_modules`
 is missing, so after pulling a new `package.json` the server quietly runs the old packages.
 
