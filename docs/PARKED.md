@@ -24,15 +24,14 @@ Where things stand, so nothing is forgotten between sessions. Last updated 2026-
   (Tailscale reached the PC, nothing answered on 8080). Task result `267014` = stopped by user;
   `267009` = running. If the check says False, wait and re-run it rather than starting a second copy.
   Keep the stick private: it holds the account database and the server's session secret.
+- **Phone check passed 2026-11-12:** middle and late chapter seeks land correctly on converted
+  books, and a downloaded book plays in airplane mode after a full app restart. Migration wrapped up.
 - **GitHub access checked 2026-11-12:** `git fetch` and `git pull` on the PC work without a
   prompt, so the key revocations did not affect this project.
 
 ## Next, in order
 
-1. **Final phone check** - the app was reinstalled 2026-10-30. Still to confirm: a middle and a
-   late chapter seek to the right place, and one offline download (a short book) plays with the
-   network off.
-2. **Decide the permanent URL** - no rush, but before downloading many books for offline
+1. **Decide the permanent URL** - no rush, but before downloading many books for offline
    listening on the phone. Progress, bookmarks and the account live on the server and survive a
    change; the installed app, sign-in and offline downloads would need redoing. Keeping the
    current `ts.net` address is a fine answer. Alternatives: Tailscale Services (needs the PC to
