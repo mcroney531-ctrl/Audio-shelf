@@ -4,3 +4,10 @@ library/
 *.log
 .DS_Store
 .env
+
+# Personal migration records: kept beside the project, never committed
+library.json
+excluded.txt
+reconcile-*.json
+audiobooks-com.txt
+audiobooks-com-checklist.csv

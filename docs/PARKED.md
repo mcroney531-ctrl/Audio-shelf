@@ -49,6 +49,11 @@ Where things stand, so nothing is forgotten between sessions. Last updated 2026-
   only (VIP titles are rentals), at a normal pace, one at a time. No bulk downloader, and no
   third-party tools holding login cookies. Audible's reconcile does not cover these, so keep
   a simple list of what has been moved.
+  - *Per book:* download it by hand, then `.\scripts\file-audiobooks.ps1 -DryRun` and, if the plan
+    looks right, the same without `-DryRun`. It reads author, title and length from the file's
+    tags, checks the length against `audiobooks-com-checklist.csv` (Title, Author, Runtime, Type),
+    files it as above and logs it to `audiobooks-com.txt`. Unverified on Windows until the first
+    real run. The checklist comes from Claude in Chrome reading the library page, read-only.
 - **Text to speech** - the Generate tab is built but has never made a real call.
   - *Google Cloud TTS (built):* needs the API enabled, a billing card on the project (the free
     tier still applies), and a key pasted into Generate. Test with one short paragraph; expect a

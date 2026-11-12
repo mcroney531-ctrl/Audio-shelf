@@ -22,7 +22,8 @@ npm run icons                # regenerate the PWA icon set from assets/logo.png
 Windows has its own launchers: `start.ps1` (also `-Library`, `-Port`,
 `-TrustProxy`), `install.ps1` (one-shot setup), `scripts/stop.ps1` (find the
 server by port when its window is gone), `scripts/install-task.ps1` (run at
-logon), `scripts/create-shortcut.ps1`.
+logon), `scripts/create-shortcut.ps1`, `scripts/file-audiobooks.ps1` (file browser-saved MP3s
+onto the shelf; `-DryRun` first).
 
 ## Shape of it
 
