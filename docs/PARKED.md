@@ -19,19 +19,21 @@ Where things stand, so nothing is forgotten between sessions. Last updated 2026-
   Start-ScheduledTask -TaskName AudioShelf
   ```
   Keep the stick private: it holds the account database and the server's session secret.
+- **GitHub access checked 2026-11-12:** `git fetch` and `git pull` on the PC work without a
+  prompt, so the key revocations did not affect this project.
 
 ## Next, in order
 
-1. **Check the PC can still pull from GitHub** after the key revocations: `git fetch` in the
-   AudioShelf folder. A login prompt or an authentication error means a revoked token was stored
-   there. (The repository history was scanned: no secrets were ever committed.)
-2. **Decide the permanent URL** before downloading books for offline listening on the phone -
+1. **Final phone check** - the app was reinstalled 2026-10-30. Still to confirm: a middle and a
+   late chapter seek to the right place, and one offline download (a short book) plays with the
+   network off.
+2. **Decide the permanent URL** - no rush, but before downloading many books for offline
+   listening on the phone. Progress, bookmarks and the account live on the server and survive a
+   change; the installed app, sign-in and offline downloads would need redoing -
    offline downloads belong to the address and would need redoing after a change. Keeping the
    current `ts.net` address is a fine answer. Alternatives: Tailscale Services (needs the PC to
    become a *tagged* device, which changes how it appears for SSH and file sharing), renaming
    the machine or tailnet, Tailscale Funnel (public), Cloudflare Tunnel with a domain.
-3. **Final phone check** - the app was reinstalled 2026-10-30. Still to confirm: a middle and a
-   late chapter seek to the right place, and one offline download plays with the network off.
 
 ## Exploring
 
