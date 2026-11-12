@@ -29,8 +29,7 @@ Where things stand, so nothing is forgotten between sessions. Last updated 2026-
    network off.
 2. **Decide the permanent URL** - no rush, but before downloading many books for offline
    listening on the phone. Progress, bookmarks and the account live on the server and survive a
-   change; the installed app, sign-in and offline downloads would need redoing -
-   offline downloads belong to the address and would need redoing after a change. Keeping the
+   change; the installed app, sign-in and offline downloads would need redoing. Keeping the
    current `ts.net` address is a fine answer. Alternatives: Tailscale Services (needs the PC to
    become a *tagged* device, which changes how it appears for SSH and file sharing), renaming
    the machine or tailnet, Tailscale Funnel (public), Cloudflare Tunnel with a domain.
