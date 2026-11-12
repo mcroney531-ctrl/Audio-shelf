@@ -1,6 +1,6 @@
 # Parked work
 
-Where things stand, so nothing is forgotten between sessions. Last updated 2026-11-09.
+Where things stand, so nothing is forgotten between sessions. Last updated 2026-11-12.
 
 ## Done
 
@@ -35,10 +35,15 @@ Where things stand, so nothing is forgotten between sessions. Last updated 2026-
 
 ## Exploring
 
-- **Audiobooks.com** - no official export. One-book test only: save a purchased title's audio
-  from the browser player. Passes if its length matches the listed runtime and it plays end to
-  end; then tag it with ffmpeg and file it as `library/<Author>/<Title>/<Title>.mp3`. If it
-  fails, stop there. No bulk downloader, no VIP titles, no third-party tools holding cookies.
+- **Audiobooks.com** - no official export, but the browser-player route works. Tested
+  2026-11-12 on *Chain of Command* (purchased): the web player streams one complete MP3 named by
+  ISBN; saved via DevTools -> Network -> Media -> open in new tab -> Download. 7:22:35 against a
+  listed 7:22:40, played to the end, and it arrives already tagged (author and book title), so
+  no ffmpeg step is needed. File it as `library/<Author>/<Title>/<Title>.mp3`; it has no chapter
+  marks or cover art. Their terms prohibit this, so the risk is to the account: purchased titles
+  only (VIP titles are rentals), at a normal pace, one at a time. No bulk downloader, and no
+  third-party tools holding login cookies. Audible's reconcile does not cover these, so keep
+  a simple list of what has been moved.
 - **Text to speech** - the Generate tab is built but has never made a real call.
   - *Google Cloud TTS (built):* needs the API enabled, a billing card on the project (the free
     tier still applies), and a key pasted into Generate. Test with one short paragraph; expect a
