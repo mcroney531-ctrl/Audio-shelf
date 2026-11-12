@@ -17,7 +17,10 @@ Where things stand, so nothing is forgotten between sessions. Last updated 2026-
   .\scripts\stop.ps1                      # wait for "Port 8080 is free."
   robocopy "C:\Users\Trevor Newsome\Documents\AudioShelf" "D:\AudioShelf-backup" /E /XD node_modules .git /R:2 /W:5
   Start-ScheduledTask -TaskName AudioShelf
+  Test-NetConnection 127.0.0.1 -Port 8080 | Select-Object TcpTestSucceeded   # must say True
   ```
+  The first time, the server never came back up after the copy, and the phone showed HTTP 502
+  (Tailscale reached the PC, nothing answered on 8080). Task result `267014` = stopped by user.
   Keep the stick private: it holds the account database and the server's session secret.
 - **GitHub access checked 2026-11-12:** `git fetch` and `git pull` on the PC work without a
   prompt, so the key revocations did not affect this project.
