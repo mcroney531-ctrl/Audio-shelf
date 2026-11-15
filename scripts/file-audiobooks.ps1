@@ -59,7 +59,8 @@ function ConvertTo-Seconds([string]$text) {
 # dots or spaces, at most 80 characters, cut at a word where possible.
 function ConvertTo-PathName([string]$name) {
   $name = $name -replace '\s*:\s*', ' - '
-  $name = $name -replace '[\\/*?"<>|]', ''
+  $name = $name -replace '\s*/\s*', '-'
+  $name = $name -replace '[\\*?"<>|]', ''
   $name = ($name -replace '[\x00-\x1f]', '' -replace '\s+', ' ').Trim()
   if ($name.Length -gt 80) {
     $cut = $name.Substring(0, 80)
@@ -153,6 +154,10 @@ if (($Author -or $Title) -and $sources.Count -ne 1) {
 # --- plan -------------------------------------------------------------------
 $plan = @()
 $claimed = @{}
+# Every audio file already on the shelf, so a re-download is caught by its size
+# whatever name it was filed under.
+$libraryAudio = @(Get-ChildItem -LiteralPath $library -Recurse -File |
+  Where-Object { $_.Extension -match '^\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav)$' })
 foreach ($file in $sources) {
   # Windows PowerShell 5.1 turns a native tool's stderr into a terminating
   # error under 'Stop', so relax it for this one call.
@@ -176,6 +181,8 @@ foreach ($file in $sources) {
   $bookTitle = $Title
   if (-not $bookTitle) { $bookTitle = $tags['album'] }
   if (-not $bookTitle) { $bookTitle = $tags['title'] }
+  # Audiobooks.com appends an edition marker to the tag: "Chain of Command (ABR)".
+  if ($bookTitle) { $bookTitle = ($bookTitle -replace '\s*[\(\[]\s*(abr|unabr|abridged|unabridged)\.?\s*[\)\]]\s*$', '').Trim() }
 
   $seconds = [double]$format.duration
   $entry = [pscustomobject]@{
@@ -211,8 +218,20 @@ foreach ($file in $sources) {
   $folder = Join-Path (Join-Path $library $authorDir) $titleName
   $entry.Destination = Join-Path $folder "$titleName.mp3"
   if (-not $entry.Problem) {
+    # The same book filed earlier under another name: by hand, or with a shorter title.
+    $authorPath = Join-Path $library $authorDir
+    $sameTitle = $null
+    if (Test-Path -LiteralPath $authorPath) {
+      $key = ConvertTo-MatchKey $bookTitle
+      $sameTitle = Get-ChildItem -LiteralPath $authorPath -Directory | Where-Object { (ConvertTo-MatchKey $_.Name) -eq $key } | Select-Object -First 1
+    }
+    $sameBytes = $libraryAudio | Where-Object { $_.Length -eq $file.Length } | Select-Object -First 1
     if (Test-Path -LiteralPath $entry.Destination) {
       $entry.Problem = 'already on the shelf (duplicate download?)'
+    } elseif ($sameBytes) {
+      $entry.Problem = "identical to $($sameBytes.FullName.Substring($library.Length + 1)) - already on the shelf"
+    } elseif ($sameTitle) {
+      $entry.Problem = "already on the shelf as $authorDir\$($sameTitle.Name) - if it is a different book, re-run with -Files and -Title"
     } elseif ($claimed.ContainsKey($entry.Destination.ToLower())) {
       $entry.Problem = "same book as $($claimed[$entry.Destination.ToLower()]) - a duplicate download"
     } elseif ((Test-Path -LiteralPath $folder) -and (Get-ChildItem -LiteralPath $folder -File | Where-Object { $_.Extension -match '^\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav)$' })) {
