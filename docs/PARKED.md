@@ -30,7 +30,7 @@ Where things stand, so nothing is forgotten between sessions. Last updated 2026-
   they were matched to the checklist by length, confirmed by ear from the narrator's opening,
   and filed with `-Files -Author -Title`. The checklist is not reliable: it had *Power Wars* as
   11:00 (the file is a genuine 27:40) and the wrong author for *Intelligence Matters*.
-  Backup refresh still to do (below).
+  Backup refreshed 2026-11-15: 38 MP3s, 7.2 GB, matching the library.
 - **Phone check passed 2026-11-12:** middle and late chapter seeks land correctly on converted
   books, and a downloaded book plays in airplane mode after a full app restart. Migration wrapped up.
 - **GitHub access checked 2026-11-12:** `git fetch` and `git pull` on the PC work without a
@@ -38,8 +38,7 @@ Where things stand, so nothing is forgotten between sessions. Last updated 2026-
 
 ## Next, in order
 
-1. **Refresh the backup** with the steps under *Backup* above: 17 Audiobooks.com books (6.9 GB) were added since 2026-11-12.
-2. **Decide the permanent URL** - no rush, but before downloading many books for offline
+1. **Decide the permanent URL** - no rush, but before downloading many books for offline
    listening on the phone. Progress, bookmarks and the account live on the server and survive a
    change; the installed app, sign-in and offline downloads would need redoing. Keeping the
    current `ts.net` address is a fine answer. Alternatives: Tailscale Services (needs the PC to
