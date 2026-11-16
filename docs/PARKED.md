@@ -31,6 +31,9 @@ Where things stand, so nothing is forgotten between sessions. Last updated 2026-
   and filed with `-Files -Author -Title`. The checklist is not reliable: it had *Power Wars* as
   11:00 (the file is a genuine 27:40) and the wrong author for *Intelligence Matters*.
   Backup refreshed 2026-11-15: 38 MP3s, 7.2 GB, matching the library.
+- **Tidy-up 2026-11-15:** demo books and the LibriVox sample removed from the library; Tailscale
+  set to **Run unattended** (`tailscale debug prefs` shows `"ForceDaemon": true`). AudioShelf
+  itself still starts only when Trevor Newsome logs in.
 - **Phone check passed 2026-11-12:** middle and late chapter seeks land correctly on converted
   books, and a downloaded book plays in airplane mode after a full app restart. Migration wrapped up.
 - **GitHub access checked 2026-11-12:** `git fetch` and `git pull` on the PC work without a
@@ -65,11 +68,7 @@ Where things stand, so nothing is forgotten between sessions. Last updated 2026-
 
 ## Small things
 
-- Tailscale on the PC: switch on **Run unattended** (tray icon), so a restart doesn't drop it.
-- Optional: delete the leftover `.voucher` files in the library folder.
-- Optional: remove the four silent demo books from setup by deleting `library\Hollis Vance`,
-  `library\Idris Farrow` and `library\Wren Okonkwo`. (`social_01_adams_64kb.mp3` is a real
-  LibriVox recording.)
+- Optional: delete the 25 leftover `.voucher` files in the library folder.
 - Optional: review AudioShelf API tokens in Settings and revoke any you don't recognise.
 - Audible activation bytes are still blocked (CloudFront 403). Not needed: every book came as
   AAXC with its own voucher.
