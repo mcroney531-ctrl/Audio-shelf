@@ -181,8 +181,9 @@ foreach ($file in $sources) {
   $bookTitle = $Title
   if (-not $bookTitle) { $bookTitle = $tags['album'] }
   if (-not $bookTitle) { $bookTitle = $tags['title'] }
-  # Audiobooks.com appends an edition marker to the tag: "Chain of Command (ABR)".
-  if ($bookTitle) { $bookTitle = ($bookTitle -replace '\s*[\(\[]\s*(abr|unabr|abridged|unabridged)\.?\s*[\)\]]\s*$', '').Trim() }
+  # Audiobooks.com appends an edition marker to the tag: "Chain of Command (ABR)",
+  # "Directorate S (UAB)".
+  if ($bookTitle) { $bookTitle = ($bookTitle -replace '\s*[\(\[]\s*(abr|uab|unabr|abridged|unabridged)\.?\s*[\)\]]\s*$', '').Trim() }
 
   $seconds = [double]$format.duration
   $entry = [pscustomobject]@{

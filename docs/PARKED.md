@@ -1,6 +1,6 @@
 # Parked work
 
-Where things stand, so nothing is forgotten between sessions. Last updated 2026-11-12.
+Where things stand, so nothing is forgotten between sessions. Last updated 2026-11-15.
 
 ## Done
 
@@ -24,6 +24,13 @@ Where things stand, so nothing is forgotten between sessions. Last updated 2026-
   (Tailscale reached the PC, nothing answered on 8080). Task result `267014` = stopped by user;
   `267009` = running. If the check says False, wait and re-run it rather than starting a second copy.
   Keep the stick private: it holds the account database and the server's session secret.
+- **Audiobooks.com migration: done 2026-11-15.** 18 of the 22 owned titles are on the shelf and
+  logged in `audiobooks-com.txt`; the other 4 (*Prequel*, *The Assault on Intelligence*,
+  *Betrayal*, *Tired of Winning*) were left off on purpose. 6 files came with no tags at all;
+  they were matched to the checklist by length, confirmed by ear from the narrator's opening,
+  and filed with `-Files -Author -Title`. The checklist is not reliable: it had *Power Wars* as
+  11:00 (the file is a genuine 27:40) and the wrong author for *Intelligence Matters*.
+  Backup refresh still to do (below).
 - **Phone check passed 2026-11-12:** middle and late chapter seeks land correctly on converted
   books, and a downloaded book plays in airplane mode after a full app restart. Migration wrapped up.
 - **GitHub access checked 2026-11-12:** `git fetch` and `git pull` on the PC work without a
@@ -31,7 +38,8 @@ Where things stand, so nothing is forgotten between sessions. Last updated 2026-
 
 ## Next, in order
 
-1. **Decide the permanent URL** - no rush, but before downloading many books for offline
+1. **Refresh the backup** with the steps under *Backup* above: 17 Audiobooks.com books (6.9 GB) were added since 2026-11-12.
+2. **Decide the permanent URL** - no rush, but before downloading many books for offline
    listening on the phone. Progress, bookmarks and the account live on the server and survive a
    change; the installed app, sign-in and offline downloads would need redoing. Keeping the
    current `ts.net` address is a fine answer. Alternatives: Tailscale Services (needs the PC to
@@ -40,20 +48,12 @@ Where things stand, so nothing is forgotten between sessions. Last updated 2026-
 
 ## Exploring
 
-- **Audiobooks.com** - no official export, but the browser-player route works. Tested
-  2026-11-12 on *Chain of Command* (purchased): the web player streams one complete MP3 named by
-  ISBN; saved via DevTools -> Network -> Media -> open in new tab -> Download. 7:22:35 against a
-  listed 7:22:40, played to the end, and it arrives already tagged (author and book title), so
-  no ffmpeg step is needed. File it as `library/<Author>/<Title>/<Title>.mp3`; it has no chapter
-  marks or cover art. Their terms prohibit this, so the risk is to the account: purchased titles
-  only (VIP titles are rentals), at a normal pace, one at a time. No bulk downloader, and no
-  third-party tools holding login cookies. Audible's reconcile does not cover these, so keep
-  a simple list of what has been moved.
-  - *Per book:* download it by hand, then `.\scripts\file-audiobooks.ps1 -DryRun` and, if the plan
-    looks right, the same without `-DryRun`. It reads author, title and length from the file's
-    tags, checks the length against `audiobooks-com-checklist.csv` (Title, Author, Runtime, Type),
-    files it as above and logs it to `audiobooks-com.txt`. Unverified on Windows until the first
-    real run. The checklist comes from Claude in Chrome reading the library page, read-only.
+- **Audiobooks.com, if more are bought later** - the browser-player route: DevTools -> Network ->
+  Media -> open in new tab -> Download gives one complete MP3 named by ISBN, no chapter marks or
+  cover art. Their terms prohibit this, so the risk is to the account: purchased titles only, at
+  a normal pace, no bulk downloader, no third-party tools holding login cookies. Then
+  `.\scripts\file-audiobooks.ps1 -DryRun`, and the same without `-DryRun`. Untagged files need
+  `-Files <path> -Author <name> -Title <title>`; listen to the opening to confirm which book it is.
 - **Text to speech** - the Generate tab is built but has never made a real call.
   - *Google Cloud TTS (built):* needs the API enabled, a billing card on the project (the free
     tier still applies), and a key pasted into Generate. Test with one short paragraph; expect a
